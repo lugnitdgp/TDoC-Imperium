@@ -24,7 +24,7 @@ void init(string path)
         ignore.close();
         
         path+="/.imperium";
-        cout<<path;
+        //cout<<path;
         int created = mkdir(path.c_str(), 0777);
         
         if(created==0)
@@ -41,7 +41,7 @@ void init(string path)
             ofstream conflict(conflictlog.c_str());
             conflict.close();
 
-            cout<<"Initialize a new directory\n";
+            cout<<"Initialized a new directory\n";
         }
         else
         {
