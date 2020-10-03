@@ -20,7 +20,7 @@ void init(string path)
         string ignorepath = path + "/.imperiumIgnore";
         ofstream ignore(ignorepath.c_str());
 
-        ignore<<".gitignore\n.imperium\n.git\n.imperiumignore\n.node_modules\n";
+        ignore<<".gitignore\n.imperium\n.git\n.imperiumIgnore\n.node_modules\n";
         ignore.close();
         
         path+="/.imperium";
