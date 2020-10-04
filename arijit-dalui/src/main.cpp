@@ -11,7 +11,7 @@ std::string root= "";
 void init(std::string path)
 {
 	struct stat buffer;
-	if(stat(path+"/.imperium".c_str(),&buffer)==0)
+	if(stat((path+"/.imperium").c_str(),&buffer)==0)
 	{
 		std::cout<<"REPOSITORY ALREADY CREATED\n";
 	}
@@ -21,7 +21,7 @@ void init(std::string path)
 		ignore<<".gitignore\n.imperium\n.git\n.imperiumignore\n.node_modules\n";
 	    ignore.close();
 	path+="./imperium";
-	int created=mkdir(path,0777);
+	int created=mkdir(path.c_str(),0777);
 	if(created==0)
 	{
 		std::string commitlog	=	path +"/commitlog";
@@ -41,7 +41,7 @@ void init(std::string path)
 		std::cout<<"!!ERROR!!";
 	}
 	}
-}
+	   }
 int main(int argc,char **argv)
 {
 	const std::string dir = getenv("dir");
@@ -50,6 +50,6 @@ int main(int argc,char **argv)
 	{
 		init(root);
 	}	
-	cout<<"SUCCESS"<<endl;
+	std::cout<<"SUCCESS"<<std::endl;
 	return 0;
 }
