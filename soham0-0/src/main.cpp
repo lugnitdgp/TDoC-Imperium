@@ -7,39 +7,32 @@
 
 class imperium {
     std::string root;
-
-    /*
-        Checks if the provided path exists or not, if it returns its type.
-        @param pathArgument passed path 
-    */
     std::string doesExist(std::string);
-
     void createDirectory(std::string);
-    
     std::string relativePath(std::string);
-    
     bool isIgnored(std::string);
-
     void addToLog(std::string);
-
     void addToCache(std::string);
     public:
     /*
-        constructor
+        Constructor
         Sets root to present working directory.
     */
     imperium();
 
     /*
         Sets the root for repo directory if provided.
-        @param pathArgument path of the repo directory relative to present working directory.
+        @param path: path of the repo directory relative to present working directory.
     */
     void setRoot(std::string);
 
     //  Initializes empty repository at root directory
     void init();
 
-    //  Adds current state to the staging area
+    /*  
+        Adds current state to the staging area.
+        @param path: path of file to be added
+    */
     void add(std::string);
 
     //  Commits the tracked changes
@@ -92,16 +85,16 @@ std::string imperium::relativePath(std::string path){
     return path;
 }
 
-void imperium::createDirectory(std::string pathArgument){
-    if((mkdir(pathArgument.c_str(), 0777))==-1){
+void imperium::createDirectory(std::string path){
+    if((mkdir(path.c_str(), 0777))==-1){
         std::cerr << "Error: " << strerror(errno) << std::endl;
     }
     return ;
 }
 
-std::string imperium::doesExist(std::string pathArgument){
+std::string imperium::doesExist(std::string path){
     struct stat sb;
-    if(!stat(pathArgument.c_str(), &sb)){
+    if(!stat(path.c_str(), &sb)){
         if(S_ISDIR(sb.st_mode)){
             return "directory";
         }
@@ -112,8 +105,8 @@ std::string imperium::doesExist(std::string pathArgument){
     return "\0";
 }
 
-void imperium::setRoot(std::string pathArgument){
-    root += "/" + pathArgument;
+void imperium::setRoot(std::string path){
+    root += "/" + path;
     if((mkdir((root).c_str(), 0777))==-1){
         std::cerr << "Error: " << strerror(errno) << std::endl;
     } 
@@ -164,7 +157,7 @@ void imperium::addToLog(std::string path){
     fileReaderWriter.open((root+"/.imperium/add.log" ).c_str(),std::fstream::in);
     std::string loggedPath;
     while (std::getline (fileReaderWriter, loggedPath)) {
-        if(loggedPath == path) return ;
+        if(loggedPath == "/" + path) return ;
     } 
     fileReaderWriter.close();
     fileReaderWriter.open((root+"/.imperium/add.log" ).c_str(),std::fstream::app);
@@ -180,24 +173,24 @@ void imperium::addToCache(std::string path){
     return ;
 }
 
-void imperium::add(std::string pathArgument){
+void imperium::add(std::string path){
     std::string type;
-    if(pathArgument!=".") {
-        type = doesExist(root + "/" + pathArgument);
+    if(path!=".") {
+        type = doesExist(root + "/" + path);
     }
     else {
-        pathArgument = "";
+        path = "";
         type = "directory";
     }
     if(type=="\0"){
-        std::cout << pathArgument << "No such file/directory exits!" << std::endl;
+        std::cout << path << "No such file/directory exits!" << std::endl;
         return ;
     }
-    if(isIgnored(pathArgument)) return ; 
+    if(isIgnored(path)) return ; 
     if(type == "directory"){
-        addToLog(pathArgument);
-        addToCache(root + "/" + pathArgument);
-        for(auto &subDir : std::filesystem::recursive_directory_iterator(root + pathArgument)){
+        addToLog(root + "/"+ path);
+        addToCache(root + "/" + path);
+        for(auto &subDir : std::filesystem::recursive_directory_iterator(root + path)){
             if(!isIgnored(subDir.path())){
                 addToLog(subDir.path());
                 addToCache(subDir.path());
@@ -205,8 +198,8 @@ void imperium::add(std::string pathArgument){
         }
     }
     else if(type == "file"){
-        addToLog(pathArgument);
-        addToCache(root + "/" + pathArgument);
+        addToLog(root + "/" + path);
+        addToCache(root + "/" + path);
     }
 
     return ;
