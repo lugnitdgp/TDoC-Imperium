@@ -3,6 +3,7 @@ CXX_FLAGS := -std=c++17 -ggdb
 
 BIN := bin
 SRC := src
+BASEDIR := ~/imperium
 INCLUDE :=
 LIB := LIB
 LIBRARIES :=
@@ -12,10 +13,10 @@ all: $(BIN)/$(EXECUTABLE)
 
 run: clean all
 	@echo "Run called"
-	./$(BIN)/$(EXECUTABLE)
+	$(BASEDIR)/$(BIN)/$(EXECUTABLE)
 
 $(BIN)/$(EXECUTABLE): $(SRC)/*.cpp
-	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) -L$(LIB) $^ -o $ ~/imperium/$(BIN)/$(EXECUTABLE) $(LIBRARIES) -lssl -lcrypto
+	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) -L$(LIB) $^ -o $ $(BASEDIR)/$(BIN)/$(EXECUTABLE) $(LIBRARIES) -lssl -lcrypto
 clean:
 	@echo "Clean called"
-	@rm -rf ~/imperium/$(BIN)/*
+	@rm -rf $(BASEDIR)/$(BIN)/*
