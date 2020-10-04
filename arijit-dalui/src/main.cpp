@@ -38,10 +38,11 @@ void init(std::string path)
 	}
 	else
 	{
-		std::cout<<"!!ERROR!!";
+		std::cout<<"!!ERROR!!\n";
 	}
 	}
 	   }
+    
 int main(int argc,char **argv)
 {
 	const std::string dir = getenv("dir");
