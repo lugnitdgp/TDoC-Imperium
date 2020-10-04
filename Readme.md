@@ -1,6 +1,6 @@
 # TDoC - IMPERIUM (vishaaaal-droid).
 
-This is the official repository for Imperium submissions by Vishal Mahavar.
+This is the repository for Imperium submissions by Vishal Mahavar.
 
 ## About the project
 
