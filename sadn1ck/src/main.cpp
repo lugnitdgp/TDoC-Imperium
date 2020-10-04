@@ -61,6 +61,13 @@ void init(const char *path) {
   }
 }
 
+/// imperium add function
+void add(const char *path) {
+  if (fs::exists(std::string(path)) == 1) {
+    std::cout << "Path exists\n";
+  }
+}
+
 int main(int argc, char **argv) {
   if (argc <= 1) {
     displayHelp();
@@ -71,7 +78,8 @@ int main(int argc, char **argv) {
       if (argc == 2) {
         std::string ignorePath = std::string(std::getenv("PWD"));
         ignorePath = ignorePath + std::string("/.imperiumIgnore");
-        std::string fileContent = "node_modules\n.env\n";
+        std::string fileContent =
+            "node_modules\n.env\n.imperium\n.imperiumIgnore";
         writeFile(ignorePath, fileContent);
         const char *path = strcat(std::getenv("PWD"), "/.imperium");
         init(path);
@@ -97,7 +105,6 @@ int main(int argc, char **argv) {
         displayHelp();
       }
       if (argc >= 3) {
-        std::cout << argv[2] << "\n";
         if (strcmp(argv[2], ".") == 0) {
           const char *addPath = std::getenv("PWD");
           std::cout << addPath << "\n";

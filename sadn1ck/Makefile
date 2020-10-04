@@ -16,7 +16,9 @@ run: clean all
 	$(BASEDIR)/$(BIN)/$(EXECUTABLE)
 
 $(BIN)/$(EXECUTABLE): $(SRC)/*.cpp
-	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) -L$(LIB) $^ -o $ $(BASEDIR)/$(BIN)/$(EXECUTABLE) $(LIBRARIES) -lssl -lcrypto
+	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) -L$(LIB) $^ -o $ $(BASEDIR)/$(BIN)/$(EXECUTABLE) $(LIBRARIES) -lssl -lcrypto -lstdc++fs
 clean:
 	@echo "Clean called"
 	@rm -rf $(BASEDIR)/$(BIN)/*
+
+	# -lstdc++fs at the end otherwise linker error due to std::experimental::filesystem
