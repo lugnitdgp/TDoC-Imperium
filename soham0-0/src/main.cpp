@@ -1,8 +1,8 @@
-#include <iostream> 
+#include <bits/stdc++.h>
 #include <fstream>
 #include <sys/stat.h> 
 #include <sys/types.h>
-#include <string>
+#include <experimental/filesystem>
 #include <cstring>
 
 class imperium {
@@ -12,7 +12,17 @@ class imperium {
         Checks if the provided path exists or not, if it returns its type.
         @param pathArgument passed path 
     */
-    std::string doesExist(std::string pathArgument);
+    std::string doesExist(std::string);
+
+    void createDirectory(std::string);
+    
+    std::string relativePath(std::string);
+    
+    bool isIgnored(std::string);
+
+    void addToLog(std::string);
+
+    void addToCache(std::string);
     public:
     /*
         constructor
@@ -24,13 +34,13 @@ class imperium {
         Sets the root for repo directory if provided.
         @param pathArgument path of the repo directory relative to present working directory.
     */
-    void setRoot(std::string pathArgument);
+    void setRoot(std::string);
 
     //  Initializes empty repository at root directory
     void init();
 
     //  Adds current state to the staging area
-    void add(std::string pathArgument);
+    void add(std::string);
 
     //  Commits the tracked changes
     void commit();
@@ -57,7 +67,7 @@ int main(int argc, char **argv){
         repository.init();
     }
     else if(!strcmp(argv[1], "add")){
-        int currentArgumentNumber = 0;
+        int currentArgumentNumber = 2;
         for(; currentArgumentNumber<argc; currentArgumentNumber++){
             repository.add(argv[currentArgumentNumber]);
         }
@@ -72,6 +82,21 @@ imperium::imperium(){
         std::cout << "No environment variable found!" << std::endl;
         exit(0);
     }
+}
+
+std::string imperium::relativePath(std::string path){
+    int itr = root.size();
+    if(path.substr(0, itr) == root){
+        return path.substr(itr+1);
+    }
+    return path;
+}
+
+void imperium::createDirectory(std::string pathArgument){
+    if((mkdir(pathArgument.c_str(), 0777))==-1){
+        std::cerr << "Error: " << strerror(errno) << std::endl;
+    }
+    return ;
 }
 
 std::string imperium::doesExist(std::string pathArgument){
@@ -100,10 +125,8 @@ void imperium::init(){
         return ;
     }
     
-    if((mkdir((root+"/.imperium").c_str(), 0777))==-1){
-        std::cerr << "Error: " << strerror(errno) << std::endl;
-    }  
-    
+    createDirectory(root+"/.imperium"); 
+
     std::fstream fileWriter;
     fileWriter.open ((root+"/.imperiumIgnore").c_str(), std::fstream::out | std::fstream::app);
     fileWriter << "/.imperium\n/.imperiumIgnore\n/.node_modules\n/.env\n";
@@ -125,11 +148,67 @@ void imperium::init(){
     return ;
 }
 
-void imperium::add(std::string pathArgument){
-    if(pathArgument == "."){
-        pathArgument = "";
+bool imperium::isIgnored(std::string path){
+    std::fstream fileReader;
+    fileReader.open((root+"/.imperiumIgnore" ).c_str(), std::fstream::in);
+    std::string ignoredPath;
+    path = relativePath(path);
+    while (std::getline (fileReader, ignoredPath)) {
+        if(ignoredPath == "/" + path.substr(0, ignoredPath.size() -1))  return true;
+    }
+    return false;
+}
+
+void imperium::addToLog(std::string path){
+    std::fstream fileReaderWriter;
+    fileReaderWriter.open((root+"/.imperium/add.log" ).c_str(),std::fstream::in);
+    std::string loggedPath;
+    while (std::getline (fileReaderWriter, loggedPath)) {
+        if(loggedPath == path) return ;
     } 
-    
+    fileReaderWriter.close();
+    fileReaderWriter.open((root+"/.imperium/add.log" ).c_str(),std::fstream::app);
+    fileReaderWriter << "/" + path << std::endl;
+    fileReaderWriter.close();
+}
+
+void imperium::addToCache(std::string path){
+    if(doesExist(root+"/.imperium/.add")!= "directory"){
+        createDirectory(root+"/.imperium/.add");
+    }
+    std::filesystem::copy(path, root + "/.imperium/.add/" + relativePath(path), std::filesystem::copy_options::update_existing | std::filesystem::copy_options::recursive);
+    return ;
+}
+
+void imperium::add(std::string pathArgument){
+    std::string type;
+    if(pathArgument!=".") {
+        type = doesExist(root + "/" + pathArgument);
+    }
+    else {
+        pathArgument = "";
+        type = "directory";
+    }
+    if(type=="\0"){
+        std::cout << pathArgument << "No such file/directory exits!" << std::endl;
+        return ;
+    }
+    if(isIgnored(pathArgument)) return ; 
+    if(type == "directory"){
+        addToLog(pathArgument);
+        addToCache(root + "/" + pathArgument);
+        for(auto &subDir : std::filesystem::recursive_directory_iterator(root + pathArgument)){
+            if(!isIgnored(subDir.path())){
+                addToLog(subDir.path());
+                addToCache(subDir.path());
+            }
+        }
+    }
+    else if(type == "file"){
+        addToLog(pathArgument);
+        addToCache(root + "/" + pathArgument);
+    }
+
     return ;
 }
 
