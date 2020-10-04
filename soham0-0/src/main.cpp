@@ -147,7 +147,7 @@ bool imperium::isIgnored(std::string path){
     std::string ignoredPath;
     path = relativePath(path);
     while (std::getline (fileReader, ignoredPath)) {
-        if(ignoredPath == "/" + path.substr(0, ignoredPath.size() -1))  return true;
+        if(ignoredPath == "/" + path.substr(0, ignoredPath.size()-1))   return true;
     }
     return false;
 }
@@ -169,7 +169,13 @@ void imperium::addToCache(std::string path){
     if(doesExist(root+"/.imperium/.add")!= "directory"){
         createDirectory(root+"/.imperium/.add");
     }
-    std::filesystem::copy(path, root + "/.imperium/.add/" + relativePath(path), std::filesystem::copy_options::update_existing | std::filesystem::copy_options::recursive);
+    if(doesExist(path) == "directory"){
+        if(doesExist(root + "/.imperium/.add/" + relativePath(path))!="directory"){
+            createDirectory(root + "/.imperium/.add/" + relativePath(path));
+        }
+    }else{
+        std::filesystem::copy(path, root + "/.imperium/.add/" + relativePath(path), std::filesystem::copy_options::update_existing);
+    }
     return ;
 }
 
@@ -190,7 +196,7 @@ void imperium::add(std::string path){
     if(type == "directory"){
         addToLog(root + "/"+ path);
         addToCache(root + "/" + path);
-        for(auto &subDir : std::filesystem::recursive_directory_iterator(root + path)){
+        for(auto &subDir : std::filesystem::recursive_directory_iterator(root +"/"+ path)){
             if(!isIgnored(subDir.path())){
                 addToLog(subDir.path());
                 addToCache(subDir.path());
