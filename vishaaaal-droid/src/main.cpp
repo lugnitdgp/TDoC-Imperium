@@ -18,15 +18,15 @@ void init(string &path){
 	path+="/.imperium";
 	if(mkdir(path.c_str(),0777)!=0) {cout<<"_ERROR_\n"; return;}
 	
-	string commitLog=path+"/commitlog";
+	string commitLog=path+"/commit.log";
 	ofstream commit(commitLog.c_str());
 	commit.close();
 	
-	string addLog=path+"/addlog";
+	string addLog=path+"/add.log";
 	ofstream add(addLog.c_str());
 	add.close();
 	
-	string conflictLog=path+"/conflictlog";
+	string conflictLog=path+"/conflict.log";
 	ofstream conflict(conflictLog.c_str());
 	conflict<<"False\n";
 	conflict.close();
