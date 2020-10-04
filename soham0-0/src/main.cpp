@@ -1,8 +1,9 @@
-#include <bits/stdc++.h>
+#include <iostream>
+#include <iostream>
 #include <fstream>
 #include <sys/stat.h> 
 #include <sys/types.h>
-#include <experimental/filesystem>
+#include <filesystem>
 #include <cstring>
 
 class imperium {
@@ -117,7 +118,7 @@ void imperium::init(){
         std::cout<<"Repository has already been initialized" << std::endl;
         return ;
     }
-    
+
     createDirectory(root+"/.imperium"); 
 
     std::fstream fileWriter;
@@ -128,7 +129,7 @@ void imperium::init(){
     fileWriter.open ((root+"/.imperium/conflict").c_str(), std::fstream::out | std::fstream::app);
     fileWriter << "false\n";
     fileWriter.close(); 
-    
+
     fileWriter.open ((root+"/.imperium/commit.log").c_str(), std::fstream::out | std::fstream::app);
     fileWriter << "";
     fileWriter.close(); 
@@ -136,7 +137,7 @@ void imperium::init(){
     fileWriter.open ((root+"/.imperium/add.log").c_str(), std::fstream::out | std::fstream::app);
     fileWriter << "";
     fileWriter.close();
-    
+
     std::cout << "Initialized empty imperium repository at " << root << std::endl;
     return ;
 }
@@ -223,4 +224,4 @@ void imperium::revert(){
 void imperium::getStatus(){
     //  to do
     return ;
-}
+} 
