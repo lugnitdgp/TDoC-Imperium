@@ -1,7 +1,7 @@
 #!/bin/bash
-sudo apt-get update
-sudo apt-get install openssl -y
-sudo apt-get install libssl-dev -y
+#sudo apt-get update
+#sudo apt-get install openssl -y
+#sudo apt-get install libssl-dev -y
 mkdir -p ~/imperium/bin
 cp imperium.sh ~/imperium
 cd ..
