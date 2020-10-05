@@ -33,15 +33,15 @@ void init(string path)
         
         if(created==0)
         {
-            string commitlog= path + "/commitlog";
+            string commitlog= path + "/commit.log";
             ofstream commit(commitlog.c_str());
             commit.close();
 
-            string addlog= path + "/addlog";
+            string addlog= path + "/add.log";
             ofstream add(addlog.c_str());
             add.close();
             
-            string conflictlog= path + "/conflictlog";
+            string conflictlog= path + "/conflict.log";
             ofstream conflict(conflictlog.c_str());
             conflict.close();
 
@@ -54,180 +54,101 @@ void init(string path)
     }
 }
 
-bool ignorefolder( string path, vector<string> dirname)
+void addToCache(string path)
 {
-    for(auto dir: dirname)
-    {
-        dir.pop_back();
-        if(dir.find(path) != string::npos)
-            return true;
-    }
-    return false;
+	string s = root + "/.imperium/.add";
+	struct stat buf;
+	if (stat(s.c_str(), &buf) != 0 || S_ISDIR(buf.st_mode) == 0)
+		mkdir(s.c_str(), 0777);
+	struct stat buffer;
+	if(stat(path.c_str(), &buffer) == 0)
+	{
+		string relative = path.substr(root.length());
+		string imperiumrel = root + "/.imperium/.add" + relative;
+		if(S_ISDIR(buffer.st_mode))
+		{
+			struct stat b;
+			if (stat(imperiumrel.c_str(), &b) != 0 || S_ISDIR(b.st_mode) == 0)
+				fs::create_directories(imperiumrel);
+		}
+		else
+		{
+			struct stat b;
+			fs::copy_file(path, imperiumrel, fs::copy_options::overwrite_existing);
+		}
+	}
 }
 
-void addtocache( string path, char type)
+bool ignoreCheck(string path)
 {
-    struct stat buffer;
-    if(stat((root+"/.imperium/.add").c_str(), &buffer) !=0)
-        mkdir(((root+"/.imperium/.add").c_str()), 0777);
-
-    if(type== 'f')
-    {
-        string filename = path.substr(root.length());
-        string filerel = root+ "/.imperium/.add" + filename.substr(0, filename.find_last_of("/"));
-
-        struct stat buf;
-        if(stat(filerel.c_str(), &buf) != 0)
-        {
-            fs::create_directories(filerel);
-        }
-        fs::copy_file(path, root+"/.imperium/.add" + filename,fs::copy_options::overwrite_existing);
-    }
-    else if(type=='d')
-    {
-        string filename = path.substr(root.length());
-        string filerel = root+ "/.imperium/.add" + filename;
-
-        struct stat buf1;
-        if(stat(filerel.c_str(), &buf1) != 0)
-        {
-            fs::create_directories(filerel);
-        }
-    }   
+	ifstream fin;
+	fin.open(root + "/.imperiumignore");
+	string s;
+	while (getline(fin, s))
+	{
+		int found = path.find(s); 
+		if(found!=string::npos){
+			cout << path << " exists in .imperiumignore\n";
+			return true;
+		}
+	}
+	fin.close();
+	return false;
 }
 
-bool tobeignored(string path, int onlyimperiumignore=0)
+bool toBeIgnored(string path)
 {
-    ifstream ignore, add;
-    ignore.open((root+"/.imperiumignore").c_str());
-    add.open((root+"/.imperium/addlog").c_str());
-    string file_or_dir;
-    vector<string> filename;
-    vector<pair<string, char>> addfilename;
-    vector<string> ignoredir;
-
-    if(ignore.is_open())
-    {
-        while(!ignore.eof())
-        {
-            getline(ignore, file_or_dir);
-            auto i = file_or_dir.end();
-            i--;            
-
-            if(*i == '/')
-            {
-                ignoredir.push_back(file_or_dir);
-            }
-            else
-            {
-                filename.push_back(root+file_or_dir);
-            }
-            
-        }
-    }
-    ignore.close();
-
-    if(onlyimperiumignore==0)
-    {
-        if(add.is_open())
-        {
-            while(!add.eof())
-            {
-                getline(add, file_or_dir);
-                if(file_or_dir.length()>4 )
-                {
-                    addfilename.push_back(make_pair(file_or_dir.substr(file_or_dir.length()-4), file_or_dir.at(file_or_dir.length()-1)));
-                }
-            }
-        }
-        add.close();
-
-        for(auto file: addfilename)
-        {
-            if(path.compare(file.first)==0)
-            {
-                addtocache(path, file.second);
-                cout<<"Updated: "<<path << endl;
-                return true;
-            }
-        }
-    }
-    if(find(filename.begin(), filename.end(), path) != filename.end() or ignorefolder(path, ignoredir))
-        return true;
-    return false;
+	ifstream fin;
+	fin.open(root + "/.imperium/add.log");
+	string s;
+	while (getline(fin, s))
+	{
+		if(s == path){
+			addToCache(path);
+			cout << path << " exists in add.log\n";
+			return true;
+		}
+	}
+	if(ignoreCheck(path))
+		return true;
+	fin.close();
+	return false;
 }
 
-void add(string path, string arg1){
-    struct stat sb;
-    
-    if(stat((root+"/.imperium").c_str(), &sb)==0)
-    {
-        ofstream add;
-        add.open((root+"/.imperium/addlog").c_str(), std::ios_base::app);
-        string addpath = root;
-        if(strcmp(arg1.c_str() , ".")!=0){
-            addpath+=("/"+arg1);
-        }
-        
-        //using recursive_directory_iterator = fs::recursive_directory_iterator;
-        struct stat buffer;
-        if (stat(addpath.c_str(), &buffer) == 0 ) 
-        {
-            if(buffer.st_mode & S_IFDIR)
-            {
-                if(!tobeignored(addpath))
-                {
-                    add<<"\""<<addpath<<"\""<<"-d\n";
-                    addtocache(path, 'd');
-                    cout<<"Added directory"<<"\""<<addpath<<"\""<<"\n";
-                }
-            
-                for (auto& p: fs::recursive_directory_iterator(addpath)){
-                    if(tobeignored(p.path()))
-                        continue;
-                    struct stat sb1;
-                    if(stat(p.path().c_str(), &sb1)==0)
-                    {
-                        if(sb1.st_mode & S_IFDIR)
-                        {
-                            addtocache(p.path(), 'd');
-                            add<<p.path()<<"-d\n";
-                            cout<<"Added directory"<<"\""<<p.path()<<"\""<<"\n";
-                        }
-                        else if(sb1.st_mode & S_IFREG)
-                        {
-                            addtocache(p.path(), 'f');
-                            add<<p.path()<<"-f\n";
-                            cout<<"Added file"<<"\""<<p.path()<<"\""<<"\n";
-                        }
-                        else
-                        {
-                            continue;
-                        }
-                    }
-                }  
-            } 
-            else if(buffer.st_mode & S_IFREG)
-            {
-                if(!tobeignored(addpath))
-                {
-                    add<<"\""<<path<<"\""<<"-f\n";
-                    addtocache(path, 'f');
-                    cout<<"Added file: "<<"\""<<path<<"\""<<"\n";
-                }
-            }
-            else
-            {
-                cout<<"invalid path!"<<"\n";
-            }
-        }
-        add.close();
-    }
-    else
-    {
-        cout<<"Repository has not been initialised!\n";
-    }
-    
+void add(char* argv[])
+{
+	string path;
+	if (strcmp(argv[2], ".") == 0)
+		path = root;
+	else
+		path = root + "/" + argv[2];
+	struct stat buf;
+	if (stat(path.c_str(), &buf) == 0)
+	{
+		if(toBeIgnored(path))
+			return;
+		ofstream fout;
+		fout.open(root + "/.imperium/add.log", ios::app);
+		if(S_ISDIR(buf.st_mode))
+		{
+			for (auto& p: fs::recursive_directory_iterator(path))
+			{
+				string s = p.path();
+				if(toBeIgnored(s))
+					continue;
+				fout << s << "\n";
+				addToCache(s);
+			}
+		}
+		else
+		{
+			fout << path << "\n";
+			addToCache(path);
+		}
+		fout.close();
+	}
+	else
+		cout << "Fatal: '" << argv[2] << "' did not match any files\n";
 }
 
 int main(int argc, char* argv[])
@@ -237,6 +158,6 @@ int main(int argc, char* argv[])
     if(strcmp(argv[1],"init")==0)
         init(root);
     if(strcmp(argv[1],"add")==0)
-        add(root, argv[2]);
+        add(argv);
     return 0;
 }
