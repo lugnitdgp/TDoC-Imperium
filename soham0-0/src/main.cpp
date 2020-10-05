@@ -4,14 +4,21 @@
 #include <sys/types.h>
 #include <filesystem>
 #include <cstring>
+#include <ctime>
+#include <openssl/sha.h>
 
 class imperium {
     std::string root;
     std::string doesExist(std::string);
+    bool isRepo();
+    std::string getTime();
     std::string relativePath(std::string);
     bool isIgnored(std::string);
     void addToLog(std::string);
     void addToCache(std::string);
+    std::string getHash(std::string);
+    void purgeAdd();
+    void updateCommitLog(std::string, std::string);
     public:
     /*
         Constructor
@@ -35,7 +42,7 @@ class imperium {
     void add(std::string);
 
     //  Commits the tracked changes
-    void commit();
+    void commit(std::string);
 
     //  Changes current branch
     void checkout();
@@ -63,6 +70,13 @@ int main(int argc, char **argv){
         for(; currentArgumentNumber<argc; currentArgumentNumber++){
             repository.add(argv[currentArgumentNumber]);
         }
+    }
+    else if(!strcmp(argv[1], "commit")){
+        if(argc<3 || argv[2] == ""){
+            std::cout << "Please add your commit message" << std::endl;
+            return -1;
+        }
+        repository.commit(argv[2]);
     }
     return 0;
 }
@@ -95,6 +109,15 @@ std::string imperium::doesExist(std::string path){
         }
     }
     return "\0";
+}
+
+bool imperium::isRepo(){
+    if(doesExist(root + "/.imperium")!="directory")             return false;
+    if(doesExist(root + "/.imperium/conflict")!="file")         return false;
+    if(doesExist(root + "/.imperium/commit.log")!="file")  return false;
+    if(doesExist(root + "/.imperium/add.log")!="file")          return false;
+    if(doesExist(root + "/.imperiumIgnore")!="file")            return false;
+    return true;
 }
 
 void imperium::setRoot(std::string path){
@@ -205,8 +228,52 @@ void imperium::add(std::string path){
     return ;
 }
 
-void imperium::commit(){
-    //  to do
+void imperium::purgeAdd(){
+    std::filesystem::remove_all(root + "/.imperium/.add");
+    std::fstream fileWriter;   
+    fileWriter.open ((root+"/.imperium/add.log").c_str(), std::fstream::out | std::fstream::trunc);
+    fileWriter.close();
+}
+
+std::string imperium::getTime(){
+        time_t now = time(0);
+	    tm *gmtm = gmtime(&now);
+	    return asctime(gmtm);
+    }
+
+std::string imperium::getHash(std::string input){
+    unsigned char str[500];
+	strcpy( (char *)( str ), input.c_str() );
+	unsigned char hash[20]; 
+	SHA1(str, strlen((char *)str), hash);
+	char ans[41]; ans[40]='\0';
+	for(int i=0; i<20; i++){
+		sprintf(&ans[2*i], "%02x ", hash[i]);
+	}
+    return ans;
+}
+
+void imperium::updateCommitLog(std::string message, std::string commitHash){
+    std::fstream fileWriter;   
+    fileWriter.open ((root+"/.imperium/commit.log").c_str(), std::fstream::in | std::fstream::app);
+    fileWriter << "commit " + commitHash + " " + message + "\n";
+    fileWriter.close();
+}
+
+void imperium::commit(std::string message){
+    if(!isRepo()){
+        std::cout << "Fatal Error: Not An Imperium Repository" << std::endl;
+        exit(0);
+    }
+    if(doesExist(root + "/.imperium/.add") != "directory"){
+        std::cout << "Nothing to commit. No staged files/folders." << std::endl;
+        return ;
+    }
+    std::string commitHash = getHash(message);
+    std::filesystem::create_directories(root + "/.imperium/.commit/" + commitHash);
+    std::filesystem::copy(root + "/.imperium/.add", root + "/.imperium/.commit/" + commitHash, std::filesystem::copy_options::recursive);
+    updateCommitLog(message, commitHash);
+    purgeAdd();
     return ;
 }
 
