@@ -14,6 +14,7 @@
 
 namespace fs = std::experimental::filesystem;
 std::string root = "";
+
 /// Displaying help if no commands are given
 void displayHelp() {
   std::cout << "usage: imperium <command> [<args>]\n\n";
@@ -35,7 +36,6 @@ bool dirExists(std::string path) {
 /// create directory at path
 void createDir(std::string path) {
   // TODO: Add error checks
-  // std::cout << "Inside createDir: " << path << "\n";
   mkdir(path.c_str(), 0777);
 }
 
@@ -137,8 +137,6 @@ bool toBeIgnored(std::string path, int onlyImperiumIgnore = 0) {
           addedFileNames.push_back(
               std::make_pair(file_or_dir.substr(1, file_or_dir.length() - 4),
                              file_or_dir.at(file_or_dir.length() - 1)));
-          // std::cout << "test: " << file_or_dir.substr(0, file_or_dir.length()
-          // - 2) << "\n";
         }
       }
     }
@@ -157,12 +155,6 @@ bool toBeIgnored(std::string path, int onlyImperiumIgnore = 0) {
       ignoreFolder(path, ignoreDir)) {
     return true;
   }
-  // for (auto filename : filenames)
-  // {
-  //     std::cout << "Compared .imperiumIgnore:\n"
-  //               << filename << "\n"
-  //               << path << "\n\n";
-  // }
   return false;
 }
 
