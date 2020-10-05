@@ -8,7 +8,6 @@
 class imperium {
     std::string root;
     std::string doesExist(std::string);
-    void createDirectory(std::string);
     std::string relativePath(std::string);
     bool isIgnored(std::string);
     void addToLog(std::string);
@@ -85,13 +84,6 @@ std::string imperium::relativePath(std::string path){
     return path;
 }
 
-void imperium::createDirectory(std::string path){
-    if((mkdir(path.c_str(), 0777))==-1){
-        std::cerr << "Error: " << strerror(errno) << std::endl;
-    }
-    return ;
-}
-
 std::string imperium::doesExist(std::string path){
     struct stat sb;
     if(!stat(path.c_str(), &sb)){
@@ -118,7 +110,7 @@ void imperium::init(){
         return ;
     }
 
-    createDirectory(root+"/.imperium"); 
+    std::filesystem::create_directories(root+"/.imperium"); 
 
     std::fstream fileWriter;
     fileWriter.open ((root+"/.imperiumIgnore").c_str(), std::fstream::out | std::fstream::app);
@@ -167,14 +159,16 @@ void imperium::addToLog(std::string path){
 
 void imperium::addToCache(std::string path){
     if(doesExist(root+"/.imperium/.add")!= "directory"){
-        createDirectory(root+"/.imperium/.add");
+        std::filesystem::create_directories(root+"/.imperium/.add");
     }
     if(doesExist(path) == "directory"){
         if(doesExist(root + "/.imperium/.add/" + relativePath(path))!="directory"){
-            createDirectory(root + "/.imperium/.add/" + relativePath(path));
+            std::filesystem::create_directories(root + "/.imperium/.add/" + relativePath(path));
         }
     }else{
-        std::filesystem::copy(path, root + "/.imperium/.add/" + relativePath(path), std::filesystem::copy_options::update_existing);
+        std::filesystem::path p1 = root + "/.imperium/.add/" + relativePath(path);
+        std::filesystem::create_directories(p1.parent_path());
+        std::filesystem::copy(path, p1, std::filesystem::copy_options::update_existing);
     }
     return ;
 }
