@@ -61,7 +61,6 @@ void addtoCache(string addPath,char type){
 bool ignoreFolder(string addPath,vector<string> &ignoreDir)
 {
 	for(auto dir:ignoreDir){
-		if(dir.find(addPath)!=string::npos) return true;
 		if(addPath.find(dir)!=string::npos) return true;
 	}
 	return false;
