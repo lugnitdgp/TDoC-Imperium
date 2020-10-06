@@ -26,6 +26,8 @@ class imperium {
     */
     imperium();
 
+    void getHelp(std::string);
+
     /*
         Sets the root for repo directory if provided.
         @param path: path of the repo directory relative to present working directory.
@@ -61,7 +63,11 @@ int main(int argc, char **argv){
     }
 
     imperium repository;
-    if(!strcmp(argv[1], "init")){
+    if(!strcmp(argv[1], "--help")){
+        if(argc >= 3) repository.getHelp(argv[2]);
+        else repository.getHelp("");
+    }
+    else if(!strcmp(argv[1], "init")){
         if(argc==3) repository.setRoot(argv[2]);
         repository.init();
     }
@@ -78,6 +84,10 @@ int main(int argc, char **argv){
         }
         repository.commit(argv[2]);
     }
+    else {
+        std::cout << "Fatal Error: Command not recognized." << std::endl;
+        repository.getHelp("");
+    }
     return 0;
 }
 
@@ -88,6 +98,24 @@ imperium::imperium(){
         std::cout << "No environment variable found!" << std::endl;
         exit(0);
     }
+}
+
+void imperium::getHelp(std::string helpQuery){
+    bool allHelp = false;
+    if(helpQuery == ""){
+        allHelp = true;
+	std::cout << "Usage: imperium [--help <query>] [init] [add <arguments>] [commit \"<mesasge>\"]" << std::endl;
+    }
+    if(allHelp || helpQuery == "init"){
+	    std::cout << "Start a working area: \n\tinit\tInitialize an Empty repositorty in current or specified folder.\n\tUsage:\timperium init <optional relative directory path>" << std::endl;
+    }
+    if(allHelp || helpQuery == "add"){
+	std::cout << "Work on current change:\n\tadd\tAdd current state to index.\n\tUsage:\timperium add [.] [list of arguments]" << std::endl;
+    }
+    if(allHelp || helpQuery == "commit"){
+	std::cout << "Grow, mark and tweak your common history\n\tcommit\tRecord changes to the repository.\n\tUsage:\timperium commit <message>" <<std::endl;
+    }
+    return ;
 }
 
 std::string imperium::relativePath(std::string path){
@@ -198,7 +226,12 @@ void imperium::addToCache(std::string path){
 
 void imperium::add(std::string path){
     std::string type;
+    if(!isRepo()){
+        std::cout << "Fatal Error: Not An Imperium Repository" << std::endl;
+        exit(0);
+    }
     if(path!=".") {
+        purgeAdd();
         type = doesExist(root + "/" + path);
     }
     else {
@@ -248,7 +281,7 @@ std::string imperium::getHash(std::string input){
 	SHA1(str, strlen((char *)str), hash);
 	char ans[41]; ans[40]='\0';
 	for(int i=0; i<20; i++){
-		sprintf(&ans[2*i], "%02x ", hash[i]);
+		sprintf(&ans[2*i], "%02x", hash[i]);
 	}
     return ans;
 }
