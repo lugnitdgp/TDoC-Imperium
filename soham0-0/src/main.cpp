@@ -302,8 +302,18 @@ void imperium::commit(std::string message){
         std::cout << "Nothing to commit. No staged files/folders." << std::endl;
         return ;
     }
-    std::string commitHash = getHash(message);
+    std::string commitHash = getHash(message), temp, previousCommit = "";
+    std::fstream fileReader;
+    fileReader.open((root+"/.imperium/commit.log" ).c_str(),std::fstream::in);
+    while (std::getline(fileReader, temp)){
+        previousCommit = temp;
+    }
+    fileReader.close();
     std::filesystem::create_directories(root + "/.imperium/.commit/" + commitHash);
+    if(previousCommit != ""){
+        previousCommit = previousCommit.substr(7, 40);
+        std::filesystem::copy(root + "/.imperium/.commit/" + previousCommit, root + "/.imperium/.commit/" + commitHash, std::filesystem::copy_options::recursive);
+    }
     std::filesystem::copy(root + "/.imperium/.add", root + "/.imperium/.commit/" + commitHash, std::filesystem::copy_options::recursive);
     updateCommitLog(message, commitHash);
     purgeAdd();
