@@ -43,7 +43,7 @@ bool checkPath(const char *path)
 
 // ignoreCheck function -
 // checks if the file / folder is to be ignored based on .imperiumIgnore
-// checks if the file / folder is to be ignored based on if its already added to add.log
+// checks if the file / folder is to be ignored based on if its already ADDED to add.log
 
 bool ignoreCheck(const char *path, vector<string> allIgnorePaths)
 {
@@ -69,7 +69,7 @@ bool ignoreCheck(const char *path, vector<string> allIgnorePaths)
     return 0;
 }
 
-void addToCache(std::string path, char type)
+void addToCache(string path, char type)
 {
     struct stat buffer;
     if (stat((string(root) + "/.imperium/.add").c_str(), &buffer) != 0)
@@ -78,9 +78,9 @@ void addToCache(std::string path, char type)
     }
     if (type == 'f')
     {
-        std::string filename = path.substr(string(root).length());
-        std::string filerel = string(root) + "/.imperium/.add" +
-                              filename.substr(0, filename.find_last_of("/"));
+        string filename = path.substr(string(root).length());
+        string filerel = string(root) + "/.imperium/.add" +
+                         filename.substr(0, filename.find_last_of("/"));
 
         struct stat buffer2;
         if (stat(filerel.c_str(), &buffer2) != 0)
@@ -92,8 +92,8 @@ void addToCache(std::string path, char type)
     }
     else if (type == 'd')
     {
-        std::string filename = path.substr(string(root).length());
-        std::string filerel = string(root) + "/.imperium/.add" + filename;
+        string filename = path.substr(string(root).length());
+        string filerel = string(root) + "/.imperium/.add" + filename;
 
         struct stat buffer3;
         if (stat(filerel.c_str(), &buffer3) != 0)
@@ -195,39 +195,47 @@ void add(const char *path)
                 addLogFile << addPath
                            << "-d\n";
                 addToCache(addPath, 'd');
-                std::cout << "Added directory: "
-                          << addPath
-                          << "\n";
+                cout << "ADDED directory: "
+                     << addPath
+                     << "\n";
             }
         }
         for (auto &iPath : fs::recursive_directory_iterator(addPath))
         {
             if (!ignoreCheck(iPath.path().c_str(), ignorePaths))
             {
-                if (!ignoreCheck(iPath.path().c_str(), addLogs))
+                struct stat buffer3;
+                if (stat(iPath.path().c_str(), &buffer3) == 0)
                 {
-                    struct stat buffer3;
-                    if (stat(iPath.path().c_str(), &buffer3) == 0)
-                    {
 
-                        if (buffer3.st_mode & S_IFDIR)
+                    if (buffer3.st_mode & S_IFDIR)
+                    {
+                        addToCache(iPath.path(), 'd');
+                        if (!ignoreCheck(iPath.path().c_str(), addLogs))
                         {
-                            addToCache(iPath.path(), 'd');
                             addLogFile << iPath.path().c_str() << "-d\n";
-                            std::cout << "Added directory: " << iPath.path().c_str() << "\n";
-                        }
-                        else if (buffer3.st_mode & S_IFREG)
-                        {
-                            addToCache(iPath.path(), 'f');
-                            addLogFile << iPath.path().c_str() << "-f\n";
-                            std::cout << "Added file: " << iPath.path().c_str() << "\n";
+                            cout << "ADDED directory: " << iPath.path().c_str() << "\n";
                         }
                         else
+                            cout << "UPDATED directory: " << iPath.path().c_str() << "\n";
+                    }
+                    else if (buffer3.st_mode & S_IFREG)
+                    {
+                        addToCache(iPath.path(), 'f');
+                        if (!ignoreCheck(iPath.path().c_str(), addLogs))
                         {
-                            continue;
+                            addLogFile << iPath.path().c_str() << "-f\n";
+                            cout << "ADDED file: " << iPath.path().c_str() << "\n";
                         }
+                        else
+                            cout << "UPDATED file: " << iPath.path().c_str() << "\n";
+                    }
+                    else
+                    {
+                        continue;
                     }
                 }
+                // }
             }
         }
     }
@@ -235,14 +243,16 @@ void add(const char *path)
     {
         if (!ignoreCheck(addPath.c_str(), ignorePaths))
         {
+            addToCache(addPath, 'f');
             if (!ignoreCheck(addPath.c_str(), addLogs))
             {
-                addToCache(addPath, 'f');
                 addLogFile << addPath
                            << "-f\n";
-                std::cout << "Added file: "
-                          << addPath << "\n";
+                cout << "ADDED file: "
+                     << addPath << "\n";
             }
+            else
+                cout << "UPDATED file: " << addPath << "\n";
         }
     }
     addLogFile.close();
