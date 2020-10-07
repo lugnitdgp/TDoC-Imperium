@@ -46,8 +46,11 @@ class imperium {
     //  Commits the tracked changes
     void commit(std::string);
 
+    //  Get Log of all commits
+    void getCommitLog(std::string);
+
     //  Changes current branch
-    void checkout();
+    void checkout(std::string);
 
     //  Reverts back to last commit
     void revert();
@@ -83,6 +86,22 @@ int main(int argc, char **argv){
             return -1;
         }
         repository.commit(argv[2]);
+    }
+    else if(!strcmp(argv[1], "log")){
+        if(argc==3 && !strcmp(argv[2], "--oneline"))    repository.getCommitLog(argv[2]);
+        else if(argc == 2)                              repository.getCommitLog("");
+        else {
+            std::cout << "Flag not recognized!" << std::endl;
+            repository.getHelp("log");
+        }
+    }
+    else if(!strcmp(argv[1], "checkout")){
+        if(argc<3 || (strlen(argv[2])!=6 && strlen(argv[2])!=40)){
+            std::cout << "Please enter the commit hash in correct format." << std::endl;
+            repository.getHelp("checkout");
+            return -1;
+        }
+        repository.checkout(argv[2]);
     }
     else {
         std::cout << "Fatal Error: Command not recognized." << std::endl;
@@ -142,7 +161,7 @@ std::string imperium::doesExist(std::string path){
 bool imperium::isRepo(){
     if(doesExist(root + "/.imperium")!="directory")             return false;
     if(doesExist(root + "/.imperium/conflict")!="file")         return false;
-    if(doesExist(root + "/.imperium/commit.log")!="file")  return false;
+    if(doesExist(root + "/.imperium/commit.log")!="file")       return false;
     if(doesExist(root + "/.imperium/add.log")!="file")          return false;
     if(doesExist(root + "/.imperiumIgnore")!="file")            return false;
     return true;
@@ -287,9 +306,19 @@ std::string imperium::getHash(std::string input){
 }
 
 void imperium::updateCommitLog(std::string message, std::string commitHash){
+    std::fstream fileReader;
+    fileReader.open((root+"/.imperium/commit.log" ).c_str(), std::fstream::in);
     std::fstream fileWriter;   
-    fileWriter.open ((root+"/.imperium/commit.log").c_str(), std::fstream::in | std::fstream::app);
-    fileWriter << "commit " + commitHash + " " + message + "\n";
+    fileWriter.open ((root+"/.imperium/temp.log").c_str(), std::fstream::in | std::fstream::app);
+    std::string commitEntry;
+    fileWriter << "commit " + commitHash + " HEAD " + message + "\n";
+    while (std::getline (fileReader, commitEntry)) {
+        fileWriter << commitEntry.substr(0, 48) + "     " + commitEntry.substr(53) + "\n";
+    }
+    if(rename((root+"/.imperium/temp.log").c_str(), (root+"/.imperium/commit.log" ).c_str()) != 0){
+        std::cerr << "Commit Failed! Error: " << strerror(errno) << std::endl;
+        exit(0);
+    }
     fileWriter.close();
 }
 
@@ -312,16 +341,76 @@ void imperium::commit(std::string message){
     std::filesystem::create_directories(root + "/.imperium/.commit/" + commitHash);
     if(previousCommit != ""){
         previousCommit = previousCommit.substr(7, 40);
-        std::filesystem::copy(root + "/.imperium/.commit/" + previousCommit, root + "/.imperium/.commit/" + commitHash, std::filesystem::copy_options::recursive);
+        std::filesystem::copy(root + "/.imperium/.commit/" + previousCommit, root + "/.imperium/.commit/" + commitHash, std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
     }
-    std::filesystem::copy(root + "/.imperium/.add", root + "/.imperium/.commit/" + commitHash, std::filesystem::copy_options::recursive);
+    std::filesystem::copy(root + "/.imperium/.add", root + "/.imperium/.commit/" + commitHash, std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
     updateCommitLog(message, commitHash);
     purgeAdd();
     return ;
 }
 
-void imperium::checkout(){
-    //  to do
+void imperium::getCommitLog(std::string flag){
+    if(!isRepo()){
+        std::cout << "Fatal Error: Not An Imperium Repository" << std::endl;
+        exit(0);
+    }
+    std::fstream fileReader;
+    fileReader.open((root+"/.imperium/commit.log" ).c_str(), std::fstream::in);
+    std::string commitEntry;
+    while (std::getline (fileReader, commitEntry)) {
+        if(flag == "--oneline"){
+            commitEntry = commitEntry.substr(7, 6) + " " + commitEntry.substr(48, 4) + " " + commitEntry.substr(53);
+        }
+        std::cout << commitEntry << std::endl;
+    }
+    fileReader.close();
+    return ;
+}
+
+void imperium::checkout(std::string hash){
+    if(!isRepo()){
+        std::cout << "Fatal Error: Not An Imperium Repository" << std::endl;
+        exit(0);std::fstream fileReader;
+    }
+    
+    std::fstream fileReader;
+    fileReader.open((root+"/.imperium/commit.log" ).c_str(), std::fstream::in);
+    std::string commitEntry, hashFolder = "";
+    while (std::getline (fileReader, commitEntry)) {
+        if(hash.size()==6 && hash == commitEntry.substr(7, 6)){
+            hashFolder = commitEntry.substr(7, 40);
+            break;
+        }
+        else if(hash == commitEntry.substr(7, 40)){
+            hashFolder = commitEntry.substr(7, 40);
+            break;
+        }
+    }
+    fileReader.close();
+
+    if(hashFolder == ""){
+        std::cout << "Commit hash mismatch. Please Enter a correct commit Hash." << std::endl;
+        exit(0);
+    }
+    std::filesystem::copy((root + "/.imperium/.commit/" + hashFolder).c_str(), root.c_str(),std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
+    purgeAdd();
+    
+    fileReader.open((root+"/.imperium/commit.log" ).c_str(), std::fstream::in);
+    std::fstream fileWriter;   
+    fileWriter.open ((root+"/.imperium/temp.log").c_str(), std::fstream::in | std::fstream::app);
+    while (std::getline (fileReader, commitEntry)) {
+        if(hashFolder == commitEntry.substr(7, 40)){
+            fileWriter << commitEntry.substr(0, 47) + " HEAD " + commitEntry.substr(53) + "\n";
+        }
+        else fileWriter << commitEntry.substr(0, 48) + "     " + commitEntry.substr(53) + "\n";
+    }
+    fileWriter.close();
+    fileReader.close();
+    if(rename((root+"/.imperium/temp.log").c_str(), (root+"/.imperium/commit.log" ).c_str()) != 0){
+        std::cerr << "Checkout Failed! Error: " << strerror(errno) << std::endl;
+        exit(0);
+    }
+    std::cout << "HEAD set to " << hashFolder << " stage cleared." << std::endl;
     return ;
 }
 
