@@ -17,7 +17,7 @@ void init(string &path){
 	
 	string ignorePath=path+"/.imperiumignore";
 	ofstream ignore(ignorePath.c_str());
-	ignore<<".gitignore\n.imperium\n.git\n.imperiumignore\n.node_modules\n";
+	ignore<<".gitignore\n.imperium/\n.git\n.imperiumignore\n.node_modules\n";
 	ignore.close();
 	path+="/.imperium";
 	if(mkdir(path.c_str(),0777)!=0) {cout<<"_ERROR_\n"; return;}
