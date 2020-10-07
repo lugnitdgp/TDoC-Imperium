@@ -6,6 +6,8 @@
 #include <cstring>
 #include <ctime>
 #include <openssl/sha.h>
+#include <vector>
+#include <algorithm>
 
 class imperium {
     std::string root;
@@ -19,6 +21,7 @@ class imperium {
     std::string getHash(std::string);
     void purgeAdd();
     void updateCommitLog(std::string, std::string);
+    bool isSame(std::string, std::string);
     public:
     /*
         Constructor
@@ -102,6 +105,9 @@ int main(int argc, char **argv){
             return -1;
         }
         repository.checkout(argv[2]);
+    }
+    else if(!strcmp(argv[1], "status")){
+        repository.getStatus();
     }
     else {
         std::cout << "Fatal Error: Command not recognized." << std::endl;
@@ -219,11 +225,11 @@ void imperium::addToLog(std::string path){
     fileReaderWriter.open((root+"/.imperium/add.log" ).c_str(),std::fstream::in);
     std::string loggedPath;
     while (std::getline (fileReaderWriter, loggedPath)) {
-        if(loggedPath == "/" + path) return ;
+        if(loggedPath == path) return ;
     } 
     fileReaderWriter.close();
     fileReaderWriter.open((root+"/.imperium/add.log" ).c_str(),std::fstream::app);
-    fileReaderWriter << "/" + path << std::endl;
+    fileReaderWriter << path << std::endl;
     fileReaderWriter.close();
 }
 
@@ -250,10 +256,10 @@ void imperium::add(std::string path){
         exit(0);
     }
     if(path!=".") {
-        purgeAdd();
         type = doesExist(root + "/" + path);
     }
     else {
+        purgeAdd();
         path = "";
         type = "directory";
     }
@@ -263,10 +269,8 @@ void imperium::add(std::string path){
     }
     if(isIgnored(path)) return ; 
     if(type == "directory"){
-        addToLog(root + "/"+ path);
-        addToCache(root + "/" + path);
         for(auto &subDir : std::filesystem::recursive_directory_iterator(root +"/"+ path)){
-            if(!isIgnored(subDir.path())){
+            if(!isIgnored(subDir.path()) && subDir.path()!=root){
                 addToLog(subDir.path());
                 addToCache(subDir.path());
             }
@@ -334,9 +338,7 @@ void imperium::commit(std::string message){
     std::string commitHash = getHash(message), temp, previousCommit = "";
     std::fstream fileReader;
     fileReader.open((root+"/.imperium/commit.log" ).c_str(),std::fstream::in);
-    while (std::getline(fileReader, temp)){
-        previousCommit = temp;
-    }
+    std::getline(fileReader, previousCommit);
     fileReader.close();
     std::filesystem::create_directories(root + "/.imperium/.commit/" + commitHash);
     if(previousCommit != ""){
@@ -419,7 +421,94 @@ void imperium::revert(){
     return ;
 }
 
+bool imperium::isSame(std::string p1, std::string p2) {
+
+    if(doesExist(p1)=="directory" && doesExist(p2)=="directory"){
+        return true;
+    }
+
+    std::ifstream f1(p1, std::ifstream::in|std::ifstream::ate);
+    std::ifstream f2(p2, std::ifstream::in|std::ifstream::ate);
+
+    if (f1.fail() || f2.fail()) {
+    return false;
+    }
+
+    if (f1.tellg() != f2.tellg()) {
+    return false;
+    }
+
+    f1.seekg(0, std::ifstream::beg);
+    f2.seekg(0, std::ifstream::beg);
+    return std::equal(  std::istreambuf_iterator<char>(f1.rdbuf()),
+                        std::istreambuf_iterator<char>(),
+                        std::istreambuf_iterator<char>(f2.rdbuf()));
+}
+
 void imperium::getStatus(){
-    //  to do
+    if(!isRepo()){
+        std::cout << "Fatal Error: Not An Imperium Repository" << std::endl;
+        exit(0);
+    }
+    std::vector <std::string> staged, notStaged;
+    std::fstream fileReader;
+    fileReader.open((root+"/.imperium/commit.log" ).c_str(), std::fstream::in);
+    std::string commitEntry, headHash = "%%%";
+    while (std::getline (fileReader, commitEntry)) {
+        if(commitEntry.substr(48, 4)=="HEAD"){
+            headHash = commitEntry.substr(7, 40);
+            break;
+        }
+    }
+    fileReader.close();
+
+    fileReader.open((root + "/.imperium/add.log").c_str(), std::fstream::in);
+    std::string addEntry;
+    while(std::getline(fileReader, addEntry)){
+        addEntry = relativePath(addEntry);
+        if(doesExist(root + "/.imperium/.commit/" + headHash + "/" + addEntry)=="\0"){
+            staged.push_back("created: " + addEntry);
+        }
+        else if(!isSame(root + "/.imperium/.add/" + addEntry, root + "/.imperium/.commit/" + headHash + "/" + addEntry)){
+            staged.push_back("modified: " + addEntry);
+        }
+
+        if(!isSame(root + "/.imperium/.add/" + addEntry, root + "/" + addEntry)){
+            notStaged.push_back("modified: " + addEntry);
+        }
+    }
+    fileReader.close();
+
+    if(doesExist(root + "/.imperium/.commit/" + headHash)=="directory"){
+        for(auto &subDir : std::filesystem::recursive_directory_iterator(root)){
+            if(!isIgnored(subDir.path())){
+                if(doesExist(root + "/.imperium/.commit/" + headHash + "/" + relativePath(subDir.path())) != "\0" && doesExist(root + "/.imperium/.add/" + addEntry) == "\0"){
+                    if(!isSame(subDir.path(), root + "/.imperium/.commit/" + headHash + "/" + relativePath(subDir.path()))){
+                        notStaged.push_back("modified: " + relativePath(subDir.path()));
+                    }
+                }
+            }
+        }
+    }
+
+    for(auto &subDir : std::filesystem::recursive_directory_iterator(root)){
+        if(!isIgnored(subDir.path())){
+            if(doesExist(root + "/.imperium/.add/" + relativePath(subDir.path())) == "\0" && doesExist(root + "/.imperium/.commit/" + headHash + "/" + relativePath(subDir.path())) == "\0"){
+                notStaged.push_back("created: " + relativePath(subDir.path()));
+            }
+        }
+    }
+
+    sort(staged.begin(), staged.end());
+    sort(notStaged.begin(), notStaged.end());
+
+    std::cout << "Staged:\n-------" << std::endl;
+    for(auto s: staged){
+        std::cout << s << std::endl;
+    }
+    std::cout << std::endl << "Not Staged:\n----------" << std::endl;
+    for(auto n: notStaged){
+        std::cout << n << std::endl;
+    }
     return ;
 } 
