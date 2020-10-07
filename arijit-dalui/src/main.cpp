@@ -1,6 +1,8 @@
 #include<iostream>
 #include<sys/stat.h>
 #include<utility>
+#include <openssl/sha.h>
+#include<chrono>
 #include<sys/types.h>
 #include<fstream>
 #include<string>
@@ -212,6 +214,152 @@ bool tobeignored(std::string path,int onlyImperiumIgnore=0)
 			std::cout<<"Repository not yet initialised"<<std::endl;
 		}
 	}
+std::string getTime()
+{
+	auto end=std::chrono::system_clock::now();
+	std::time_t end_time=std::chrono::system_clock::to_time_t(end);
+	std::string time=std::ctime(&end_time);
+	return time;
+}
+std::string getcommitHash()
+{
+	std::string commitfilename=getline();
+	std::string commithash="";
+	char buf[3];
+	int length=commitfilename.length();
+	unsigned char hash[20];
+	unsigned char *val=new unsigned char[length+1];
+	strcpy((char*)val,commitfilename.c_str());
+	SHA1(val,length,hash);
+	for(int i=0;i<20;i++)
+	{
+		sprintf(buf,"%02x",hash[i]);
+		commithash+=buf;
+	}
+	return commithash;
+}
+void getcommitlog()
+{
+	std::string commitlogpath=root+"/.imperium/commit.log";
+	std::string commitline;
+	std::string commitlog;
+	commitlog.open(commitlogpath);
+	while(std::getline(commitlog,commitline))
+	{
+		std::cout<<commitline<<std::endl;
+	}
+}
+void repeatCommit(std::string abspath,char type,std::string commitHash)
+{
+	mkdir((root+"/.imperium/.commit/"+commitHash).c_str(),0777);
+	std::string relpath =abspath.substr(root.length()+19+commitHash.length());
+	std::string filepath=root+"/.imperium/.commit/"+commitHash+relpath.substr(0,find_last_of('/'));
+	fs::create_directories(filepath);
+	if(type=='f')
+	{
+		fs::copy_file(abspath,root+"/.imperium/.commit/"+commitHash+relpath,fs::copy_options::overwrite_existing);
+	}
+}
+void addcommit(std::string abspath,char type,std::string commitHash)
+{
+	struct stat s;
+	if((stat(root+"/.imperium/.commit/").c_str(),&s)!=0)
+	{
+		mkdir((root+"/.imperium/.commit/").c_str(),0777);
+	}
+	if((stat(root+"/.imperium/.commit/"+commitHash).c_str(),&s)!=0)
+	{
+		mkdir((root+"/.imperium/.commit"+commitHash).c_str(),0777);
+	}
+	std::string relpath=abspath.substr(root.length()+15);
+	std::string filepath=root+"/.imperium/.commit"+commitHash+relpath.substr(0,find_last_of('/'));
+	fs::create_directories(filepath);
+	if(type=='f')
+	{
+		fs::copy_file(abspath,root+"/.imperium/.commit"+commitHash+relpath,fs::copy_options::overwrite_existing);
+	}
+}
+void updatecommitlog(std::string commitHash,std::string message)
+{
+	std::ofstream writeHeadlog;
+	writeHeadlog.open(root+"/.imperium/head.log");
+	writeHeadlog<<commitHash<<"--"<<message<<std::endl;
+	writeHeadlog.close();
+	std::ofstream writeCommitlog;
+	std::ifstream readCommitlog;
+	readCommitlog.open(root+"/.imperium/commit.log");
+	writeCommitlog.open(root+"/.imperium/new_commit.log");
+	writeCommitlog<<commitHash<<"--"<<message<<"-->HEAD\n";
+	std::string line;
+	while(std::getline(readCommitlog,line))
+	{
+		if(line.find("-->HEAD")!=std::string::npos)
+		{
+			writeCommitlog<<line.substr(0,line.length()-8)<<"\n";
+		}
+		else{
+			writeCommitlog<<line<<"\n";
+		}
+	}
+	remove((root+"/.imperium/commit.log").c_str());
+	rename((root+"/.imperium/new_commit.log").c_str(),(root+"/.imperium/commit.log").c_str());
+	readCommitlog.close();
+	writeCommitlog.close();
+	
+}
+void commit(std::string message)
+{
+	struct stat buffer;
+	if(stat(root+"/.imperium").c_str(),&buffer)!=0)
+	{
+		std::cout<<"repository hasnt initiated\n";
+	}
+	std::string commitHash=getcommitHash();
+	if(stat((root+"/.imperium/head.log").c_str(),&buffer)==0)
+	{
+		std::string headHash;
+		std::ifstream readCommitlog;
+		readCommitlog.open(root+"/.imperium/head.log");
+		std::(readCommitlog,headHash);
+		headHash=headHash.substr(0,headHash.find("--"));
+		for(auto &p	: fs::recursive_directory_iterator(root+"/.imperium/.commit/"+headHash))
+		{
+			if(stat(p.path().c_str(),&buffer)==0)
+			{
+				if(buffer.st_mode&S_IFREG)
+				{
+					repeatCommit(p.path(),'f',commitHash);
+				}
+				else if(buffer.st_mode&S_IFDIR)
+				{
+					repeatCommit(p.path(),'d',commitHash);
+				}
+				else{
+					continue;
+				}
+			}
+		}
+	}
+	
+	for(auto &p	: fs::recursive_directory_iterator(root+"/.imperium/.add"))
+	{
+		struct stat s;
+		if(stat(p.path().c_str(),&s)==0)
+		{
+			if(s.st_mode&S_IFREG)
+			{
+				addcommit(p.path(),'f',commitHash);
+			}
+			else if(s.st_mode&S_IFREG)
+			{
+				addcommit(p.path(),'d',commitHash);
+			}
+		}
+	}
+	fs::remove_all((root+"/.imperium/.add").c_str());
+	remove((root+"/.imperium/add.log").c_str());
+	updatecommitlog(commitHash,message);
+}
     
 int main(int argc,char **argv)
 {
@@ -224,6 +372,14 @@ int main(int argc,char **argv)
 	else if(strcmp(argv[1],"add")==0)
 	{
 		add(argv);
+	}
+	else if(strcmp(argv[1],"commit")==0)
+	{
+		commit(argv[2]);
+	}
+	else if(strcmp(argv[1],"log")==0)
+	{
+		getcommitlog;
 	}
 	std::cout<<"SUCCESS"<<std::endl;
 	return 0;
