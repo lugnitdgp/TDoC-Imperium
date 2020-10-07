@@ -1,10 +1,14 @@
 #include <cstdio>
 #include <iostream>
 #include <utility>
+#include <time.h>
+#include <chrono>
 #include <fstream>
+#include <cstdlib>
 #include <cstring>
 #include <bits/stdc++.h>
 #include <sys/stat.h>
+#include <openssl/sha.h>
 #include <experimental/filesystem>
 
 using namespace std;
@@ -26,11 +30,11 @@ void init(string path)
 
         ignore<<".gitignore\n.imperium\n.git\n.imperiumignore\n.node_modules\n";
         ignore.close();
-        
+
         path+="/.imperium";
         //cout<<path;
         int created = mkdir(path.c_str(), 0777);
-        
+
         if(created==0)
         {
             string commitlog= path + "/commit.log";
@@ -40,7 +44,7 @@ void init(string path)
             string addlog= path + "/add.log";
             ofstream add(addlog.c_str());
             add.close();
-            
+
             string conflictlog= path + "/conflict.log";
             ofstream conflict(conflictlog.c_str());
             conflict.close();
@@ -151,6 +155,125 @@ void add(char* argv[])
 		cout << "Fatal: '" << argv[2] << "' did not match any files\n";
 }
 
+
+void updateCommitLog(string hash, string message, string time)
+{
+	ofstream fout;
+	fout.open(root+"/.imperium/temp.log", ios::app);
+	fout<<"commit "<<hash<<" // "<<time<<" "<<message<<" --> Commit details"<<"\n";
+	ifstream fin;
+	fin.open(root + "/.imperium/commit.log");
+	string s;
+	while (getline(fin, s))
+	{
+		int found = s.find("-->"); 
+		if(found!=string::npos)
+			s = s.substr(0, found-1);
+		fout << s << "\n";
+	}
+	fin.close();
+	fout.close();
+	remove((root + "/.imperium/commit.log").c_str());
+	rename((root+"/.imperium/temp.log").c_str(), (root+"/.imperium/commit.log").c_str());
+}
+
+void commit(int argc, char **arg)
+{
+    struct stat buf;	
+
+    if (stat((root +"/.imperium").c_str(), &buf) != 0|| S_ISDIR(buf.st_mode) == 0)
+        cout<<"Fatal: not an imperium repository\n";
+	
+	else
+	{
+		if(argc>=3)
+		{
+			string message = arg[2];
+			struct stat buffer1;
+			if(stat((root + "/.imperium/.add").c_str(), &buffer1) != 0 || S_ISDIR(buffer1.st_mode) == 0)
+				cout<<"All changes committed already!\n";
+			
+			time_t curtime; 
+			string ibuf =ctime(&curtime);
+			ibuf.pop_back();
+			//strcpy(ctime(&curtime), ibuf);
+			unsigned char obuf[20];
+
+			SHA1((const unsigned char*)ibuf.c_str(), strlen(ctime(&curtime)), obuf);
+			char s[40];
+			string str;
+			for (int i = 0; i < 20; i++) {
+				sprintf(s, "%02x ", obuf[i]);
+				str+=s;
+			}
+			string s1 = root + "/.imperium/.commit";
+			struct stat buffer;
+			if (stat(s1.c_str(), &buffer) == 0 && S_ISDIR(buffer.st_mode))
+			{
+				string line;
+				ifstream fin;
+				fin.open(root+"/.imperium/commit.log");
+				getline(fin, line);
+				int a = line.find(" ")+1;
+				int b = line.find("//")-1;
+				line = line.substr(a, b-a);
+				fin.close();
+				string headhash = s1 + "/" + line;
+				string commithash = s1 + "/" + str;
+				for (auto& p: fs::recursive_directory_iterator(headhash))
+				{
+					string s = p.path();
+					string relative = s.substr(headhash.length());
+					string snew = root + relative;
+					struct stat buffer1;
+					if(stat(snew.c_str(), &buffer1) == 0)
+					{
+						if(S_ISDIR(buffer1.st_mode))
+						{
+							fs::create_directories(commithash + relative);
+						}
+						else
+						{
+							fs::copy_file(s, commithash + relative, fs::copy_options::overwrite_existing);
+						}
+					}
+				}
+				string addcopy = root + "/.imperium/.add";
+				for (auto& p: fs::recursive_directory_iterator(addcopy))
+				{
+					string s = p.path();
+					string relative = s.substr(addcopy.length());
+					struct stat buffer1;
+					if(stat(s.c_str(), &buffer1) == 0)
+					{
+						if(S_ISDIR(buffer1.st_mode))
+						{
+							fs::create_directories(commithash + relative);
+						}
+						else
+						{
+							fs::copy_file(s, commithash + relative, fs::copy_options::overwrite_existing);
+						}
+					}
+				}
+			}
+			else
+			{
+				mkdir(s1.c_str(), 0777);
+				fs::copy(root + "/.imperium/.add", s1 + "/" + str, fs::copy_options::recursive);
+			}
+			remove((root + "/.imperium/add.log").c_str());
+			fs::remove_all(root + "/.imperium/.add");
+			updateCommitLog(str, message, ibuf);
+		}
+		else
+		{
+			cout<<"ERROR: no commit message!";
+		}
+		
+    }
+}
+
 int main(int argc, char* argv[])
 {
     const string dir = getenv("dir");
@@ -159,5 +282,7 @@ int main(int argc, char* argv[])
         init(root);
     if(strcmp(argv[1],"add")==0)
         add(argv);
+    if(strcmp(argv[1], "commit")==0)
+        commit(argc, argv);
     return 0;
 }
