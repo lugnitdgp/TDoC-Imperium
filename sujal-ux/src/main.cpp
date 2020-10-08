@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <algorithm>
 #include <filesystem>
+#include <openssl/sha.h>
 
 namespace fs= std::filesystem;
 
@@ -24,7 +25,7 @@ void init(std::string path)
 		std::string ignorepath= path + "/.imperiumignore";
 		std::ofstream ignore(ignorepath.c_str());
 		
-		ignore<<".gitignore\n.imperium\n.git\n.imperiumignore\n.node_modules\n";
+		ignore<<".gitignore\n.imperium/\n.git/\n.imperiumignore\nnode_modules/\n";
 		ignore.close();
 
 		path+="/.imperium";
@@ -68,7 +69,7 @@ bool ignoreFolder(std::string path, std::vector<std::string> dirname)
 void addToCatche(std::string path, char type)
 {
 	struct stat buffer;
-	if(stat((root + "./imperium/.add").c_str(), &buffer)!=0)
+	if(stat((root + "/.imperium/.add").c_str(), &buffer)!=0)
 		mkdir((root + "/.imperium/.add").c_str(),0777);
 	
 	if(type == 'f'){
@@ -102,7 +103,7 @@ bool toBeIgnored(std::string path, int onlyImperiumIgnore=0)
 	std::string file_or_dir;
 	std::vector<std::string> ignoreDir;
 	
-	ignoreFile.open((root+"/.imperiumignore"));
+	ignoreFile.open(root+"/.imperiumignore");
 	addFile.open(root + "/.imperium/addlog");
 	
 	if(ignoreFile.is_open()){
@@ -180,7 +181,7 @@ void add(char **argv){
 							addFile<<p.path()<< ".d\n";
 							std::cout<<"Directory Added"<<"\"" <<p.path()<<"\""<<"\n";
 						}
-						else if(buffer.st_mode & S_IFREG){
+						else if(buffer3.st_mode & S_IFREG){
 							addToCatche(p.path(),'f');
 							addFile<<p.path()<<".f\n";
 							std::cout<<"File Added"<<"\""<<p.path()<<"\""<<"\n";
@@ -208,6 +209,175 @@ void add(char **argv){
 	}
 }
 
+std::string getTime()
+{
+	auto end= std::chrono ::system_clock::now();
+	std::time_t end_time= std::chrono::system_clock::to_time_t(end);
+	std::string time=std::ctime(&end_time);
+	
+	return time;
+}
+
+std:: string getcommitHash()
+{
+	std::string commitFilename= getTime();
+	std::string commitHash = "";
+	char buf[3];
+	int length= commitFilename.length();
+	unsigned char hash[20];
+	unsigned char *val= new unsigned char[length +1];
+	strcpy((char *)val,commitFilename.c_str());
+	
+	SHA1(val,length,hash);
+	for(int i=0; i<20; i++)
+	{
+		sprintf(buf, "%02x",hash[i]);
+		commitHash+=buf;
+	}
+	return commitHash;	
+}
+
+void getCommitLog()
+{
+	std::string commitlogpath= root + "/.imperium/.commitlog";
+	std:: string commitline;
+	std::ifstream commitLog;
+	commitLog.open(commitlogpath);
+	while(std::getline(commitLog,commitline))
+	{
+		std::cout<< commitline << std::endl;
+	}
+}
+
+void repeatCommit(std::string absPath,char type, std::string commitHash)
+{
+	mkdir((root+"/.imperium/.commit/" + commitHash).c_str(),0777);
+	std::string relpath= absPath.substr(root.length()+19 + commitHash.length());
+	std::string filepath= root+"/.imperium/.commit/" + commitHash + relpath.substr(0,relpath.find_last_of('/'));
+	
+	fs::create_directories(filepath);
+	
+	if(type=='f')
+	{
+		fs::copy_file(absPath, root+"/.imperium/.commit/" + commitHash + relpath,fs::copy_options::overwrite_existing);
+	}
+	
+}
+
+void addcommit(std::string absPath,char type, std::string commitHash)
+{
+	struct stat s;
+	if(stat((root + "/.imperium/.commit").c_str(),&s)!=0)
+	{
+		mkdir((root+"/.imperium/.commit").c_str(),0777);
+	}
+	if(stat((root + "/.imperium/.commit" + commitHash).c_str(),&s)!=0)
+	{
+		mkdir((root+"/.imperium/.commit/"+ commitHash).c_str(),0777);
+	}
+	
+	std::string relpath= absPath.substr(root.length()+15);
+	std::string filepath= root+"/.imperium/.commit/" + commitHash + relpath.substr(0,relpath.find_last_of('/'));
+	
+	fs::create_directories(filepath);
+	
+	if(type=='f')
+	{
+		fs::copy_file(absPath,root+"/.imperium/.commit/" + commitHash + relpath, fs::copy_options::overwrite_existing);
+	}
+	
+}
+
+void updateCommitLog(std::string commitHash, std::string message)
+{
+	std::ofstream writeHeadlog;
+	writeHeadlog.open(root+"/.imperium/head.log");
+	writeHeadlog<< commitHash<<" -- "<<message<<std::endl;
+	writeHeadlog.close();
+	
+	std::ofstream writeCommitLog;
+	std::ifstream readCommitLog;
+	
+	readCommitLog.open(root+"/.imperium/commitlog");
+	writeCommitLog.open(root+"/.imperium/new_commitlog");
+	
+	writeCommitLog<< commitHash<<" -- "<< message<< " --> HEAD\n";
+	std::string line;
+	while(std::getline(readCommitLog,line))
+	{
+		if(line.find(" --> HEAD")!= std::string::npos)
+		{
+			writeCommitLog << line.substr(0,line.length()-8)<< "\n";
+		}
+		else{
+			writeCommitLog<< line<<"\n";
+		}
+	}
+	
+	remove((root+ "/.imperium/commitlog").c_str());
+	rename((root+ "/.imperium/new_commitlog").c_str(),(root+ "/.imperium/commitlog").c_str());
+	
+	readCommitLog.close();
+	writeCommitLog.close();
+}
+
+void commit(std::string message)
+{
+	
+	struct stat buffer;
+	if(stat((root + "/.imperium").c_str(),&buffer)!=0){
+		std::cout<<"Repo hasn't been analysed\n";
+	}
+	
+	std::string commitHash = getcommitHash();
+	
+	//copying from the prevous commit
+	
+	if(stat((root+"/.imperium/headlog").c_str(),&buffer)==0)
+	{
+		std::string headHash;
+		std::ifstream readCommitLog;
+		
+		readCommitLog.open(root+"/.imperium/headlog");
+		
+		std::getline(readCommitLog,headHash);
+		headHash = headHash.substr(0,headHash.find(" -- "));
+		for(auto &p : fs::recursive_directory_iterator(root+"/.imperium/.commit/" + headHash))
+		{
+			if(stat(p.path().c_str(),&buffer)==0)
+			{
+				if(buffer.st_mode & S_IFREG)
+				{
+					repeatCommit(p.path(),'f',commitHash);
+				}
+				else if(buffer.st_mode & S_IFDIR)
+				{
+					repeatCommit(p.path(),'d',commitHash);
+				}
+				else
+					continue;
+			}
+		}	
+	}
+		
+	//copying from staging
+	for(auto &p : fs::recursive_directory_iterator(root + "/.imperium/.add"))
+	{
+		struct stat s;
+		if(stat(p.path().c_str(),&s)==0){
+			if(s.st_mode & S_IFREG){
+				addcommit(p.path(),'f',commitHash);
+			}
+			else if(s.st_mode & S_IFDIR){
+				addcommit(p.path(),'d',commitHash);
+			}
+		}
+	}
+	fs::remove_all((root+"/.imperium/.add").c_str());	
+	remove((root+"/.imperium/addlog").c_str());
+	updateCommitLog(commitHash,message);
+	
+}
 
 int main(int argc, char **argv) {
 	const std::string dir = getenv("dir");
@@ -216,10 +386,14 @@ int main(int argc, char **argv) {
 	if(strcmp(argv[1],"init")==0){
 		init(root);
 	}
-	if(argc >2){
-		if(strcmp(argv[2],"add")==0){
-			add(argv);
-		}
+	else if(strcmp(argv[1],"add")==0){
+		add(argv);
+	}
+	else if(strcmp(argv[1],"commit")==0){
+		commit(argv[2]);
+	}
+	else if(strcmp(argv[1],"log")==0){
+		getCommitLog();
 	}
 	return 0;
 }
