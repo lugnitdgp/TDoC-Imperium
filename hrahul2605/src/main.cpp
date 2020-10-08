@@ -1,4 +1,4 @@
-#include <iostream>
+#include <bits/stdc++.h>
 #include <utility>
 #include <fstream>
 #include <string>
@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <experimental/filesystem>
+#include <openssl/sha.h>
 
 using namespace std;
 namespace fs = std::experimental::filesystem;
@@ -13,6 +14,8 @@ namespace fs = std::experimental::filesystem;
 // imperium commands
 #define INIT "init"
 #define ADD "add"
+#define COMMIT "commit"
+#define LOG "log"
 
 // present working directory
 const char *root = getenv("dir");
@@ -267,6 +270,160 @@ void help()
     cout << "\t--help,-H,-h\t\t - Help\n";
 }
 
+string getTime()
+{
+    auto end = chrono::system_clock::now();
+    time_t end_time = chrono::system_clock::to_time_t(end);
+    string time = ctime(&end_time);
+
+    return time;
+}
+
+string getCommitHash()
+{
+    string commitFileName = getTime();
+    string commitHash = "";
+
+    char buf[3];
+    int length = commitFileName.length();
+    unsigned char hash[20];
+    unsigned char *val = new unsigned char[length + 1];
+    strcpy((char *)val, commitFileName.c_str());
+
+    SHA1(val, length, hash);
+    for (int i = 0; i < 20; i++)
+    {
+        sprintf(buf, "%02x", hash[i]);
+        commitHash += buf;
+    }
+    return commitHash;
+}
+
+void repeatCommit(string absPath, char type, string commitHash)
+{
+    mkdir((string(root) + "/.imperium/.commit/" + commitHash).c_str(), 0777);
+
+    string relPath = absPath.substr(string(root).length() + 19 + commitHash.length());
+    string filePath = string(root) + "/.imperium/.commit/" + commitHash + relPath.substr(0, relPath.find_last_of('/'));
+
+    fs::create_directories(filePath);
+
+    if (type == 'f')
+        fs::copy_file(absPath, string(root) + "/.imperium/.commit/" + commitHash + relPath, fs::copy_options::overwrite_existing);
+}
+
+void addCommit(string absPath, char type, string commitHash)
+{
+
+    struct stat s;
+    if (stat((string(root) + "/.imperium/.commit").c_str(), &s) != 0)
+        mkdir((string(root) + "/.imperium/.commit").c_str(), 0777);
+    if (stat((string(root) + "/.imperium/.commit/" + commitHash).c_str(), &s) != 0)
+        mkdir((string(root) + "/.imperium/.commit/" + commitHash).c_str(), 0777);
+
+    string relPath = absPath.substr(string(root).length() + 15);
+    string filePath = string(root) + "/.imperium/.commit/" + commitHash + relPath.substr(0, relPath.find_last_of('/'));
+
+    fs::create_directories(filePath);
+
+    if (type == 'f')
+        fs::copy_file(absPath, string(root) + "/.imperium/.commit/" + commitHash + relPath, fs::copy_options::overwrite_existing);
+}
+
+void updateCommitLog(string commitHash, string message)
+{
+    ofstream writeHeadLog;
+    writeHeadLog.open(string(root) + "/.imperium/head.log");
+    writeHeadLog << commitHash << " -- " << message << endl;
+    writeHeadLog.close();
+
+    ofstream writeCommitLog;
+    ifstream readCommitLog;
+
+    readCommitLog.open(string(root) + "/.imperium/commit.log");
+    writeCommitLog.open(string(root) + "/.imperium/new_commit.log");
+
+    writeCommitLog << commitHash << " -- " << message << " -->HEAD\n";
+    string line;
+    while (getline(readCommitLog, line))
+    {
+        if (line.find(" -->HEAD") != string::npos)
+            writeCommitLog << line.substr(0, line.length() - 8) << "\n";
+        else
+            writeCommitLog << line << "\n";
+    }
+
+    remove((string(root) + "/.imperium/commit.log").c_str());
+    rename((string(root) + "/.imperium/new_commit.log").c_str(), (string(root) + "/.imperium/commit.log").c_str());
+
+    readCommitLog.close();
+    writeCommitLog.close();
+    cout << commitHash.substr(0, 5) << " -- " << message << " -->HEAD\n";
+}
+
+// commit function
+void commit(string message)
+{
+    if (!checkPath((root + string("/.imperium")).c_str()))
+    {
+        cout << "Repository not initialised.\n";
+        return;
+    }
+
+    string commitHash = getCommitHash();
+
+    // Copy all files from pervious commit
+    struct stat buffer;
+    if (stat((string(root) + "/.imperium/head.log").c_str(), &buffer) == 0)
+    {
+        string headHash;
+        ifstream readCommitLog;
+        readCommitLog.open(string(root) + "/.imperium/head.log");
+
+        getline(readCommitLog, headHash);
+        headHash = headHash.substr(0, headHash.find(" -- "));
+
+        for (auto &p : fs::recursive_directory_iterator((string(root) + "/.imperium/.commit/" + headHash)))
+        {
+            if (stat(p.path().c_str(), &buffer) == 0)
+            {
+                if (buffer.st_mode & S_IFREG)
+                    repeatCommit(p.path().c_str(), 'f', commitHash);
+
+                else if (buffer.st_mode & S_IFDIR)
+                    repeatCommit(p.path().c_str(), 'd', commitHash);
+            }
+        }
+    }
+
+    // Copy all files from the staging
+    for (auto &p : fs::recursive_directory_iterator(string(root) + "/.imperium/.add"))
+    {
+        struct stat s;
+        if (stat(p.path().c_str(), &s) == 0)
+        {
+            if (s.st_mode & S_IFREG)
+                addCommit(p.path().c_str(), 'f', commitHash);
+            if (s.st_mode & S_IFDIR)
+                addCommit(p.path().c_str(), 'd', commitHash);
+        }
+    }
+    fs::remove_all((string(root) + "/.imperium/.add").c_str());
+    remove((string(root) + "/.imperium/add.log").c_str());
+    updateCommitLog(commitHash, message);
+}
+
+// Commit Log
+void getCommitLog()
+{
+    string commitLogPath = string(root) + "/.imperium/commit.log";
+    string commitLine;
+    ifstream commitLog;
+    commitLog.open(commitLogPath);
+    while (getline(commitLog, commitLine))
+        cout << commitLine << endl;
+}
+
 int main(int argc, char const *argv[])
 {
     if (argc == 1)
@@ -282,6 +439,11 @@ int main(int argc, char const *argv[])
             else
                 add(argv[2]);
         }
+        else if (!strcmp(argv[1], COMMIT))
+            commit(argv[2]);
+        else if (!strcmp(argv[1], LOG))
+            getCommitLog();
+
         else if (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h") || !strcmp(argv[1], "-H"))
             help();
     }
