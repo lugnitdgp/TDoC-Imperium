@@ -337,8 +337,22 @@ void addCommit(string commitHash)
 
 void updateCommitLog(string commitHash, string message)
 {
-    fstream fout((root + "/.imperium/commit.log").c_str(), fstream::app);
-    fout << "commit " << commitHash << " -- " << message << endl;
+    ifstream fin((root + "/.imperium/commit.log").c_str());
+    vector<string> commitLogs;
+    string currCommit = "";
+    if (getline(fin, currCommit)){
+        int len = currCommit.length();
+        commitLogs.push_back(currCommit.substr(0, len - 9));
+    }
+    while (getline(fin, currCommit)){
+        commitLogs.push_back(currCommit);
+    }
+    fin.close();
+    fstream fout((root + "/.imperium/commit.log").c_str(), fstream::out | fstream::trunc);
+    fout << "commit " << commitHash << " -- " << message << " --> HEAD" << endl;
+    for (auto s : commitLogs){
+        fout << s << endl;
+    }
     fout.close();
 }
 
@@ -356,7 +370,7 @@ void commit(string message)
     }
     string commitHash = generateCommitHash(), prevCommitHash = "", temp_hash = "";
     ifstream fin((root + "/.imperium/commit.log").c_str());
-    while (getline(fin, temp_hash)){
+    if (getline(fin, temp_hash)){
         prevCommitHash = temp_hash.substr(7, 40);
     }
     fin.close();
@@ -369,6 +383,184 @@ void commit(string message)
     addCommit(commitHash);
     updateCommitLog(commitHash, message);
     removeAllStaged();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// IMPERIUM LOG FUNCTION
+
+void getCommitLog()
+{
+    if (!initDone()){
+        cout << "ERROR. Repository not initialized properly.\n";
+        cout << "Try \"imperium init\".\n";
+        return;
+    }
+    if (checkDirType(root + "/.imperium/.commit") != "directory"){
+        cout << "No Commits done yet.\n";
+        cout << "Try \"imperium commit\" first.\n";
+    }
+    string currCommit = "";
+    ifstream fin((root + "/.imperium/commit.log").c_str());
+    while (getline(fin, currCommit)){
+        cout << currCommit << endl;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// IMPERIUM CHECKOUT FUNCTION
+
+void checkout(string commitHash)
+{
+    if (!initDone()){
+        cout << "ERROR. Repository not initialized properly.\n";
+        cout << "Try \"imperium init\".\n";
+        return;
+    }
+    ifstream fin((root + "/.imperium/commit.log").c_str());
+    bool directoryExists = false;
+    string commitLog = "";
+    while (getline(fin, commitLog)){
+        if (commitHash == commitLog.substr(7, 40)){
+            directoryExists = true;
+            break;
+        }
+    }
+    if (directoryExists){
+        string path = root + "/.imperium/.commit/" + commitHash;
+        for (auto &childdir : fs::recursive_directory_iterator(path + "/")){
+        string relPath = "/" + getCurrentPath(childdir.path(), path);
+        if (checkDirType(childdir.path()) == "directory"){
+            if (checkDirType(root + relPath) != "directory")
+                fs::create_directories(root + relPath);
+        }
+        else if (checkDirType(childdir.path()) == "file"){
+            fs::path file_path = root + relPath;
+            fs::create_directories(file_path.parent_path());
+            fs::copy_file(childdir.path(), file_path, fs::copy_options::overwrite_existing);
+        }
+    } 
+    }
+    else{
+        cout << "Given commmit path doesn't exist.\n";
+        cout << "Try again. Try \"imperium log\" and copy the correct commmit hash.\n";
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// IMPERIUM STATUS FUNCTION
+
+int BUFFER_SIZE = 8192;
+
+int compareFiles(string path1, string path2)
+{
+    ifstream lFile(path1.c_str(), ifstream::in | ifstream::binary);
+    ifstream rFile(path2.c_str(), ifstream::in | ifstream::binary);
+
+    if (!lFile.is_open() || !rFile.is_open())
+        return 1;
+
+    char *lBuffer = new char[BUFFER_SIZE]();
+    char *rBuffer = new char[BUFFER_SIZE]();
+
+    do{
+        lFile.read(lBuffer, BUFFER_SIZE);
+        rFile.read(rBuffer, BUFFER_SIZE);
+        int numberOfRead = lFile.gcount();
+        if (numberOfRead != rFile.gcount())
+            return 1;
+        if (memcmp(lBuffer, rBuffer, numberOfRead) != 0)
+            return 1;
+    }while (lFile.good() || rFile.good());
+
+    delete[] lBuffer;
+    delete[] rBuffer;
+    return 0;
+}
+
+void status()
+{
+    ifstream readHeadHash((root + "/.imperium/commit.log").c_str());
+    string headHash = "", line;
+    vector<string> staged, notStaged;
+    getline(readHeadHash, headHash);
+    if (headHash != "")
+        headHash = headHash.substr(7, 40);
+    
+    if (checkDirType(root + "/.imperium/add.log") == "file"){
+        ifstream fin((root + "/.imperium/add.log").c_str());
+        while (getline(fin, line)){
+            string stagedPath = line.substr(1);
+            stagedPath = getCurrentPath(stagedPath);
+            if (checkDirType(root + "/.imperium/.commit/" + headHash + "/" + stagedPath) == "\0"){
+                if (checkDirType(root + "/.imperium/.add/" + stagedPath) == "file")
+                    staged.push_back("created: " + stagedPath);
+            }
+            else if (compareFiles(root + "/.imperium/.commit/" + headHash + "/" + stagedPath, root + "/.imperium/.add/" + stagedPath)){
+                if (checkDirType(root + "/.imperium/.add/" + stagedPath) == "file")
+                    staged.push_back("modified: " + stagedPath);
+            }
+            if (compareFiles(root + "/" +  stagedPath, root + "/.imperium/.add/" + stagedPath)){
+                if (checkDirType(root + "/.imperium/.add/" + stagedPath) == "file")
+                    notStaged.push_back("modified: " + stagedPath);
+            }
+        }
+        fin.close();
+    }
+
+    if (checkDirType(root + "/.imperium/.commit") == "directory"){
+        for (auto &childdir : fs::recursive_directory_iterator(root)){
+            if (toBeIgnored(childdir.path()))
+                continue;
+            string filerel = getCurrentPath(childdir.path());
+            string commitPath = root + "/.imperium/.commit/" + headHash + "/" + filerel;
+            if ((checkDirType(commitPath) == "\0") && (find(staged.begin(), staged.end(), "created: " + filerel) == staged.end())){
+                if (checkDirType(childdir.path()) == "file")
+                    notStaged.push_back("created: " + filerel);
+            }
+            else{
+                if (checkDirType(commitPath) != "\0"){
+                    if (compareFiles(childdir.path(), commitPath)){
+                        if (checkDirType(childdir.path()) == "file")
+                            notStaged.push_back("modified: " + filerel);
+                    }
+                }
+            }
+        }
+    }
+    else{
+        for (auto &childdir : fs::recursive_directory_iterator(root)){
+            if (toBeIgnored(childdir.path()))
+                continue;
+            string filerel = getCurrentPath(childdir.path());
+            if (find(staged.begin(), staged.end(), "created: " + filerel) == staged.end()){
+                if (checkDirType(childdir.path()) == "file")
+                    notStaged.push_back("created: " + filerel);
+            }
+        }
+    }
+
+    if (!staged.empty()){
+        cout << endl;
+        cout << "Changes that are staged for the next commit: \n";
+        for (auto s : staged){
+            cout << s << endl;
+        }
+    }
+    if (!notStaged.empty()){
+        cout << endl;
+        cout << "Changes that are not staged for the next commit: \n";
+        for (auto s : notStaged){
+            cout << s << endl;
+        }
+    }
+    if (staged.empty() && notStaged.empty())
+        cout << "Everything is up to date.\n";
+
+    staged.clear();
+    notStaged.clear();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -412,6 +604,26 @@ int main(int argc, char** argv) {
             }
             commit(message);
         }
+    }
+    else if (strcmp(argv[1], "log") == 0){
+        if (argc == 2){
+            getCommitLog();
+        }
+        else{
+            cout << "ERROR. Command arguments isn't valid.\n";
+            cout << "Did you mean the command \"imperium log\".\n";   
+        }
+    }
+    else if (strcmp(argv[1], "checkout") == 0){
+        if (argc == 3){
+            checkout(argv[2]);
+        }
+        else{
+            cout << "ERROR. Please enter a proper commit hash.\n";
+        }
+    }
+    else if (strcmp(argv[1], "status") == 0){
+        status();
     }
 
     return 0;
