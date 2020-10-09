@@ -22,6 +22,7 @@ class imperium {
     void purgeAdd();
     void updateCommitLog(std::string, std::string);
     bool isSame(std::string, std::string);
+    void throwConflict();
     public:
     /*
         Constructor
@@ -55,8 +56,8 @@ class imperium {
     //  Changes current branch
     void checkout(std::string);
 
-    //  Reverts back to last commit
-    void revert();
+    //  Reverts back the passed commit
+    void revert(std::string);
 
     //  Shows status of the tracked items
     void getStatus();
@@ -108,6 +109,14 @@ int main(int argc, char **argv){
     }
     else if(!strcmp(argv[1], "status")){
         repository.getStatus();
+    }
+    else if(!strcmp(argv[1], "revert")){
+        if(argc<3 || (strlen(argv[2])!=6 && strlen(argv[2])!=40)){
+            std::cout << "Please enter the commit hash in correct format." << std::endl;
+            repository.getHelp("checkout");
+            return -1;
+        }
+        repository.revert(argv[2]);
     }
     else {
         std::cout << "Fatal Error: Command not recognized." << std::endl;
@@ -217,6 +226,7 @@ bool imperium::isIgnored(std::string path){
     while (std::getline (fileReader, ignoredPath)) {
         if(ignoredPath == "/" + path.substr(0, ignoredPath.size()-1))   return true;
     }
+    fileReader.close();
     return false;
 }
 
@@ -416,11 +426,6 @@ void imperium::checkout(std::string hash){
     return ;
 }
 
-void imperium::revert(){
-    //  to do
-    return ;
-}
-
 bool imperium::isSame(std::string p1, std::string p2) {
 
     if(doesExist(p1)=="directory" && doesExist(p2)=="directory"){
@@ -512,3 +517,81 @@ void imperium::getStatus(){
     }
     return ;
 } 
+
+void imperium::throwConflict(){
+    std::cout << "Throwing a conflict! Not that you care lmao i_i" << std::endl;
+    return;
+}
+
+void imperium::revert(std::string passedHash){
+    if(!isRepo()){
+        std::cout << "Fatal Error: Not An Imperium Repository" << std::endl;
+        exit(0);
+    }
+    if(doesExist(root + "/.imperium/.add")=="directory"){
+        std::cout << "Error: Reverting will overwrite the uncommited changes. Commit the changes and try again.\nAborting!" << std::endl;
+        exit(0);
+    }
+    std::ifstream fileReader;
+    fileReader.open((root+"/.imperium/commit.log" ).c_str(), std::fstream::in) ;
+    std::string reader = "", lastHash = "", revertHash = "", headHash = "";
+    while (std::getline (fileReader, reader)) {
+        lastHash = reader.substr(7, 40);
+        if(reader.substr(48, 4)=="HEAD") headHash = lastHash;
+        if(revertHash.size() ==  40 && (revertHash == passedHash || revertHash.substr(0, 6) == passedHash)){
+            break;
+        }
+        // std::cout << "." << std::endl;
+        revertHash = lastHash;
+    }
+    fileReader.close();
+    std::cout << revertHash << " " << headHash << "<-HEAD " << lastHash << std::endl; 
+
+    if(lastHash == ""){
+        std::cout << "Error: No commits made previously." << std::endl;
+        exit(0);
+    }
+    else if(!(revertHash.size() ==  40 && (revertHash == passedHash || revertHash.substr(0, 6) == passedHash))){
+        std::cout << "Error: Commit Hash mismatch." << std::endl;
+    }
+
+    if(revertHash == headHash){
+        std::filesystem::copy((root + "/.imperium/.commit/" + lastHash).c_str(), (root).c_str(), std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
+        for(auto &subDir: std::filesystem::recursive_directory_iterator(root)){
+            if(!isIgnored(subDir.path()) && subDir.path()!=root){
+                std::string temPath = root + "/.imperium/.commit/" + lastHash + "/" + relativePath(subDir.path());
+                if(doesExist(subDir.path())!=doesExist(temPath)){
+
+                    std::filesystem::remove_all(subDir.path());
+                }
+            }
+        }
+    }
+    else if(revertHash == lastHash){
+        for(auto &subDir: std::filesystem::recursive_directory_iterator(root + "/.imperium/.commit/" + revertHash)){
+            if(subDir.path() == root + "/.imperium/.commit/" + revertHash && doesExist(subDir.path())=="file"){
+                std::string relPath = relativePath(subDir.path()).substr(58);
+                if(isSame(root + relPath, subDir.path())){
+                    std::filesystem::remove_all(root + relPath);
+                }
+                else{
+                    throwConflict();
+                }
+            }
+        }
+    }
+    else{
+        for(auto &subDir: std::filesystem::recursive_directory_iterator(root + "/.imperium/.commit/" + lastHash)){
+            if(subDir.path() == root + "/.imperium/.commit/" + lastHash){
+                std::string relPath = relativePath(subDir.path()).substr(58);
+                if(doesExist(subDir.path())=="file" && !isSame(root + relPath, subDir.path())){
+                    throwConflict();
+                }
+                else{
+                    std::filesystem::copy((root + "/.imperium/.commit/" + lastHash).c_str(), (root + relPath).c_str(), std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
+                }
+            }
+        }
+    }
+    return ;
+}
