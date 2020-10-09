@@ -22,7 +22,6 @@ class imperium {
     void purgeAdd();
     void updateCommitLog(std::string, std::string);
     bool isSame(std::string, std::string);
-    void throwConflict();
     public:
     /*
         Constructor
@@ -61,6 +60,11 @@ class imperium {
 
     //  Shows status of the tracked items
     void getStatus();
+
+    //  unfreezes the commands
+    void resolve();
+
+    bool frozen();
 };
 
 int main(int argc, char **argv){
@@ -70,6 +74,11 @@ int main(int argc, char **argv){
     }
 
     imperium repository;
+    if(repository.frozen()){
+        if(strcmp(argv[1],"resolve"))   std::cout << "The commands have been frozen please fix the merge conflicts and run $imperium resolve to unfrezze" << std::endl;
+        else repository.resolve();
+        exit(0);
+    }
     if(!strcmp(argv[1], "--help")){
         if(argc >= 3) repository.getHelp(argv[2]);
         else repository.getHelp("");
@@ -123,6 +132,22 @@ int main(int argc, char **argv){
         repository.getHelp("");
     }
     return 0;
+}
+
+bool imperium::frozen(){
+    std::fstream fileReader;
+    fileReader.open((root+"/.imperium/conflict").c_str(), std::fstream::in);
+    std::string query;
+    std::getline(fileReader, query);
+    if(query == "true") return true;
+    return false;
+}
+
+void imperium::resolve(){
+    std::fstream fileWriter;
+    fileWriter.open ((root+"/.imperium/conflict").c_str(), std::fstream::out | std::fstream::trunc);
+    fileWriter << "false\n";
+    fileWriter.close();
 }
 
 imperium::imperium(){
@@ -518,11 +543,6 @@ void imperium::getStatus(){
     return ;
 } 
 
-void imperium::throwConflict(){
-    std::cout << "Throwing a conflict! Not that you care lmao i_i" << std::endl;
-    return;
-}
-
 void imperium::revert(std::string passedHash){
     if(!isRepo()){
         std::cout << "Fatal Error: Not An Imperium Repository" << std::endl;
@@ -545,7 +565,6 @@ void imperium::revert(std::string passedHash){
         revertHash = lastHash;
     }
     fileReader.close();
-    std::cout << revertHash << " " << headHash << "<-HEAD " << lastHash << std::endl; 
 
     if(lastHash == ""){
         std::cout << "Error: No commits made previously." << std::endl;
@@ -555,43 +574,116 @@ void imperium::revert(std::string passedHash){
         std::cout << "Error: Commit Hash mismatch." << std::endl;
     }
 
-    if(revertHash == headHash){
+    std::cout << headHash.substr(7, 6) << " " << revertHash.substr(7, 6) << " " << lastHash.substr(7, 6) << std::endl;
+    
+    if(revertHash == lastHash){
+        for(auto &subDir: std::filesystem::recursive_directory_iterator(root + "/.imperium/.commit/" + revertHash)){
+            if(subDir.path() != root + "/.imperium/.commit/" + revertHash && doesExist(subDir.path())=="file"){
+                std::string relPath = "/" + relativePath(subDir.path()).substr(58);
+                std::cout << relPath << std::endl;
+                if(isSame(root + relPath, subDir.path())){
+                    std::cout << "Removing " + root + relPath << std::endl;
+                    std::filesystem::remove_all(root + relPath);
+                }
+                else{
+                    std::cout << "Found conflict in " + root + relPath << std::endl;
+                    std::fstream fileWriter;
+                    fileWriter.open(root + relPath, std::fstream::app);
+                    fileWriter << "## Current Files\n";
+                    fileWriter << "## This file was created in your reverted commit, passedHash , but your subsequent changes have been preserved.\n";
+                    fileWriter.close();
+                    fileWriter.open((root + "/.imperium/conflict").c_str(), std::fstream::out | std::fstream::trunc);
+                    fileWriter << "true\n";
+                    fileWriter.close();
+                }
+            }
+        }
+    }
+    else if(revertHash == headHash){
         std::filesystem::copy((root + "/.imperium/.commit/" + lastHash).c_str(), (root).c_str(), std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
         for(auto &subDir: std::filesystem::recursive_directory_iterator(root)){
             if(!isIgnored(subDir.path()) && subDir.path()!=root){
                 std::string temPath = root + "/.imperium/.commit/" + lastHash + "/" + relativePath(subDir.path());
                 if(doesExist(subDir.path())!=doesExist(temPath)){
-
+                    std::cout << subDir.path() << std::endl;
                     std::filesystem::remove_all(subDir.path());
-                }
-            }
-        }
-    }
-    else if(revertHash == lastHash){
-        for(auto &subDir: std::filesystem::recursive_directory_iterator(root + "/.imperium/.commit/" + revertHash)){
-            if(subDir.path() == root + "/.imperium/.commit/" + revertHash && doesExist(subDir.path())=="file"){
-                std::string relPath = relativePath(subDir.path()).substr(58);
-                if(isSame(root + relPath, subDir.path())){
-                    std::filesystem::remove_all(root + relPath);
-                }
-                else{
-                    throwConflict();
                 }
             }
         }
     }
     else{
         for(auto &subDir: std::filesystem::recursive_directory_iterator(root + "/.imperium/.commit/" + lastHash)){
-            if(subDir.path() == root + "/.imperium/.commit/" + lastHash){
-                std::string relPath = relativePath(subDir.path()).substr(58);
+            if(subDir.path() != root + "/.imperium/.commit/" + lastHash){
+                std::string relPath = "/" + relativePath(subDir.path()).substr(58);
+                // std::cout
                 if(doesExist(subDir.path())=="file" && !isSame(root + relPath, subDir.path())){
-                    throwConflict();
+                    std::cout << "Found conflict in " + root + relPath << std::endl;
+                    std::fstream fileReader, fileWriter;
+                    fileWriter.open((root + relPath).c_str(), std::fstream::app);
+                    fileReader.open(subDir.path().c_str(), std::fstream::in);
+                    fileWriter << "## MERGE CONFLICT, CURRENT FILE ##\n";
+                    std::string tempcontents;
+                    while(std::getline(fileReader, tempcontents)){
+                        fileWriter << tempcontents + "\n";
+                    }
+                    fileReader.close();
+                    fileWriter.close();
+                    fileWriter.open((root + "/.imperium/conflict").c_str(), std::fstream::out | std::fstream::trunc);
+                    fileWriter << "true\n";
+                    fileWriter.close();
                 }
                 else{
                     std::filesystem::copy((root + "/.imperium/.commit/" + lastHash).c_str(), (root + relPath).c_str(), std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
                 }
             }
         }
+        for(auto &subDir: std::filesystem::recursive_directory_iterator(root + "/.imperium/.commit/" + revertHash)){
+            if(subDir.path() == root + "/.imperium/.commit/" + revertHash){
+                std::string relPath = "/" + relativePath(subDir.path()).substr(58);
+                bool existsInLastHash = (doesExist(subDir.path())==doesExist(root + "/.imperium/.commit/" + lastHash + relPath)),
+                     existsInHeadHash = (doesExist(subDir.path())==doesExist(root + "/.imperium/.commit/" + headHash + relPath));
+                if(!existsInLastHash && existsInHeadHash && !isSame(subDir.path(), root + "/.imperium/.commit/" + headHash + relPath)){
+                    std::cout << "Found conflict in " + root + relPath << std::endl;std::fstream fileWriter;
+                    fileWriter.open(root + relPath, std::fstream::app);
+                    fileWriter << "## Current Files ##\n";
+                    fileWriter << "## This file was created in your reverted commit " +revertHash+ " , but your subsequent changes have been preserved. ##\n";
+                    fileWriter.close();
+                    fileWriter.open((root + "/.imperium/conflict").c_str(), std::fstream::out | std::fstream::trunc);
+                    fileWriter << "true\n";
+                    fileWriter.close();
+                }
+                else {
+                    std::cout << "Removing " + root + relPath << std::endl;
+                    std::filesystem::remove_all(root + relPath);
+                }
+
+            }
+        }
     }
+    
+    fileReader.open((root+"/.imperium/commit.log" ).c_str(), std::fstream::in);
+    std::fstream fileWriter;   
+    fileWriter.open ((root+"/.imperium/temp.log").c_str(), std::fstream::in | std::fstream::app);
+    std::string commitEntry;
+    while (std::getline (fileReader, commitEntry)) {
+        std::string Hash = commitEntry.substr(7, 40);
+        if(Hash == revertHash){
+            if(commitEntry.substr(48, 4) == "HEAD"){
+                if(std::getline (fileReader, commitEntry)){
+                fileWriter << commitEntry.substr(0, 47) + " HEAD " + commitEntry.substr(53) + "\n";
+                };
+            }
+
+            continue;
+        }
+        fileWriter << commitEntry + "\n";
+    }
+    if(rename((root+"/.imperium/temp.log").c_str(), (root+"/.imperium/commit.log" ).c_str()) != 0){
+        std::cerr << "Commit Failed! Error: " << strerror(errno) << std::endl;
+        exit(0);
+    }
+    fileWriter.close();
+    std::filesystem::remove_all(root + "/.imperium/.commit/" + revertHash);
+    std::cout << "Commit " + revertHash + " reverted sucessfully." <<   std::endl;
     return ;
 }
