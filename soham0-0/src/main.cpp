@@ -573,8 +573,6 @@ void imperium::revert(std::string passedHash){
     else if(!(revertHash.size() ==  40 && (revertHash == passedHash || revertHash.substr(0, 6) == passedHash))){
         std::cout << "Error: Commit Hash mismatch." << std::endl;
     }
-
-    std::cout << headHash.substr(7, 6) << " " << revertHash.substr(7, 6) << " " << lastHash.substr(7, 6) << std::endl;
     
     if(revertHash == lastHash){
         for(auto &subDir: std::filesystem::recursive_directory_iterator(root + "/.imperium/.commit/" + revertHash)){
