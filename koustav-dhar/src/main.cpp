@@ -516,7 +516,7 @@ void status()
                 continue;
             string filerel = getCurrentPath(childdir.path());
             string commitPath = root + "/.imperium/.commit/" + headHash + "/" + filerel;
-            if ((checkDirType(commitPath) == "\0") && (find(staged.begin(), staged.end(), "created: " + filerel) == staged.end())){
+            if ((checkDirType(commitPath) == "\0") && ((find(staged.begin(), staged.end(), "created: " + filerel) == staged.end()) && (find(staged.begin(), staged.end(), "modified: " + filerel) == staged.end()))){
                 if (checkDirType(childdir.path()) == "file")
                     notStaged.push_back("created: " + filerel);
             }
@@ -535,7 +535,7 @@ void status()
             if (toBeIgnored(childdir.path()))
                 continue;
             string filerel = getCurrentPath(childdir.path());
-            if (find(staged.begin(), staged.end(), "created: " + filerel) == staged.end()){
+            if ((find(staged.begin(), staged.end(), "created: " + filerel) == staged.end()) && (find(staged.begin(), staged.end(), "modified: " + filerel) == staged.end())){
                 if (checkDirType(childdir.path()) == "file")
                     notStaged.push_back("created: " + filerel);
             }
