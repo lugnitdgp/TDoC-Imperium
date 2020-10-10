@@ -227,6 +227,7 @@ string getHead(){
 		while(!commitLog.eof()){
 			string commitHash;
 			getline(commitLog,commitHash);
+			if(commitHash.size()<20) continue;
 			int index=-1;
 			while(commitHash[++index]!=' ');
 			commitHash=commitHash.substr(0,index);
@@ -242,7 +243,7 @@ void commit(char *argv[],int argc){
 	if(stat((root+"/.imperium").c_str(),&checkImperium)!=0) {cout<<"Repository has not been initialized yet\n"; return;}
 	if(strcmp(argv[2],"-m")!=0) {cout<<"Please write some message\n"; return;}
 	string message;
-	for(int i =3 ;i<argc;i++) {message+=argv[i]; message+=" "; }
+	for(int i =3 ;i<argc;i++) {message+=argv[i]; if(i<argc-1) message+=" "; }
 	string addPath=root+"/.imperium/.add";
 	struct stat addCheck; 
 	if(stat(addPath.c_str(),&addCheck)!=0) {cout<<".add folder not created\n"; return;}
@@ -431,12 +432,9 @@ void status(){
 					staged[0].pb(pushin);
 				}
 		}
-		string commitPath = root + "/.imperium/.commit/";
-		struct stat commitBuffer; 
-		if(stat(commitPath.c_str(),&commitBuffer)==0){
 			for(auto &p:fsnew::recursive_directory_iterator(root)){
 				if(toBeIgnored(p.path(),1)) continue;
-				commitPath=p.path();
+				string commitPath=p.path();
 				if(commitPath.length()<=root.length()) continue;
 				commitPath=commitPath.substr(root.length());
 				string relpath=commitPath;
@@ -454,7 +452,6 @@ void status(){
 					}
 				}
 			}
-		}
 	}
 	else {cout<<"Could not open add log\n"; return;}
 	addLog.close();
