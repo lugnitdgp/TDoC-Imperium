@@ -506,7 +506,226 @@ void checkout(string commitHash)
 	string commitFolderPath=root+"/.imperium/.commit"+commitHash;
 	fs::copy(commitFolderPath,root+"/",fs::copy_options::recursive|fs::copy_options::overwrite_existing);
 }
+void resolve()
+{
+	ofstream cfile;
+	cfile.open(root+"/.imperium/conflict",ofstream::trunc);
+	cfile<<"false\n";
+	cfile.close();
+}
+void mergeConflict()
+{
+	ofstream cfile;
+	cfile.open(root+"/.imperium/conflict",ofstream::trunc);
+	cfile<<"true\n";
+	cfile.close();
+}
+int commitCheck(string checkPath)
+{
+	string commitFolderPath= root+"/.imperium/.commit/"+checkPath;
+	for(auto &p : fs::recursive_directory_iterator(commitFolderPath))
+	{
+		string filename=((string)p.path()).substr(root.length()+19+checkPath.length());
+		struct stat a;
+		struct stat b;
+		if(stat(p.path().c_str(),&a)==0 && stat((root+filename).c_str(),&b)==0)
+		{
+			if(a.st_mode & S_IFDIR && b.st_mode & S_IFDIR)
+				continue;
+			else if(a.st_mode & S_IFREG && b.st_mode & S_IFREG)
+			{
+				if(compareFiles(p.path(),(root+filename)))
+					return 1;
+			}
+		}
+	}
+	return 0;
+}
+void revert(char** argv)
+{
+	if(argv[2]=="")
+	{
+		cout<<"Please provide a Hash\n";
+		return;
+	}	
+	string revertCommitHash=argv[2];
+	string commitFolderName= revertCommitHash.substr(0,40);
+	bool switchBool=false;
+	bool dirBool=false;
+	ifstream commitLog;
+	string commitLine;
+	string lastCommit="";
+	if(getline(commitLog,commitLine))
+	{
+		lastCommit=commitLine.substr(0,40);
+	}
+	commitLog.close();
+	commitLog.open(root+"/.imperium/commit.log");
+	while(getline(commitLog,commitLine))
+	{
+		if(switchBool==true)
+		{
+			commitFolderName=commitLine.substr(0,40);
+			switchBool=false;
+			break;
+		}
+		if(commitFolderName==commitLine.substr(0,40))
+		{
+			switchBool=true;
+			dirBool=true;
+		}
+	}
+	commitLog.close();
+	if(!dirBool)
+	{
+		cout<<"Incorrect Hash provided\n";
+		return;
+	}
+	else if(dirBool && lastCommit!="")
+	{
+		if(commitCheck(lastCommit)==0)
+		{
+			if(!switchBool)
+			{
+				string passedHash=revertCommitHash.substr(0,40);
+				string commitFolderPath=root+"/.imperium/.commit/"+commitFolderName;
+				if(lastCommit==passedHash)
+				{
+					fs::copy(commitFolderPath,root+"/",fs::copy_options::recursive|fs::copy_options::overwrite_existing);
+					for(auto &p : fs::recursive_directory_iterator(root))
+					{
+						struct stat s;
+						if(stat(p.path().c_str(),&s)==0)
+						{
+							string relpath=((string)p.path()).substr(root.length());
+							string prevPath= commitFolderPath+relpath;
+							string revertPath=root+"/.imperium/.commit/"+passedHash+relpath;
 
+							struct stat a;
+							struct stat b;
+							if(s.st_mode & S_IFDIR)
+								continue;
+							if(s.st_mode & S_IFREG)
+							{
+								if(stat(prevPath.c_str(),&a)!=0 && stat(revertPath.c_str(),&b)==0)
+								{
+									remove(p.path());
+								}
+							}
+						}
+					}
+				}
+				else
+				{
+					for(auto &p : fs::recursive_directory_iterator(commitFolderPath))
+					{
+						struct stat s;
+
+						if(stat(p.path().c_str(),&s)==0)
+						{
+							if(s.st_mode & S_IFDIR)
+								continue;
+							else if(s.st_mode & S_IFREG)
+							{
+								string relpath=((string)p.path()).substr(commitFolderPath.length());
+								string rootPath= root +relpath;
+								string revertPath=root+"/,imperium/.commit/"+passedHash+relpath;
+								struct stat a;
+								struct stat b;
+								if(stat(rootPath.c_str(),&a)==0)
+								{
+									if(compareFiles(rootPath,p.path()))
+									{
+										ifstream ifile(p.path().c_str(),ifstream::in);
+										ofstream ofile(rootPath,ofstream::out|ofstream::app);
+										ofile<<"\n \nYOUR CHANGES_________<<<<<<<<<<<<<<<<<<<<\n \n_________INCOMING CHANGES>>>>>>>>>>>>>>>>>>>\n \n";
+										ofile<<ifile.rdbuf();
+										cout<<"\033[1;3mMERGE CONFLICT IN : \033[0m"<<rootPath<<"\n";
+									}
+									else
+										continue;
+								}
+								else
+								{
+									fs::copy_file(p.path(),rootPath,fs::copy_options::recursive|fs::copy_options::overwrite_existing);
+								}
+							}
+						}
+					}
+					for(auto &p: fs::recursive_directory_iterator(root+"/.imperium/.commit/"+passedHash))
+					{
+						string relpath=((string)p.path()).substr((root+"/.imperium/.commit/"+passedHash).length());
+						struct stat s;
+						if(stat(p.path().c_str(),&s)==0)
+						{
+							if(s.st_mode & S_IFDIR)
+								continue;
+							else if(s.st_mode & S_IFREG)
+							{
+								struct stat a;
+								struct stat b;
+								string rootPath=root+relpath;
+								string prevPath=commitFolderPath+relpath;
+								if(stat(rootPath.c_str(),&a)==0 && stat(prevPath.c_str(),&b)!=0)
+								{
+									if(compareFiles(rootPath,p.path())==0)
+										remove(rootPath.c_str());
+									else
+									{
+										ofstream ofile(rootPath,ofstream::out|ofstream::app);
+										ofile<<"This File wasn't present in the previous checkpoint, \nHowever your changes int the succeesing commits are saved here\n\n";
+										cout<<"\033[1;31mMERGE CONFLICT IN: \033[0m"<<rootPath<<"\n";
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			else
+			{
+				string commitFolderPath=root+"/.imperium/.commit/"+commitFolderName;
+				for(auto &p: fs::recursive_directory_iterator(commitFolderPath))
+				{
+					string relpath=((string)p.path()).substr((root+"/.imperium/.commit/"+commitFolderName).length());
+					struct stat s;
+					if(stat(p.path().c_str(),&s)==0)
+					{
+						if(s.st_mode & S_IFDIR)
+							continue;
+						else if(s.st_mode & S_IFREG)
+						{
+							struct stat a;
+							string rootPath=root+relpath;
+							if(stat(rootPath.c_str(),&a)==0)
+							{
+								if(compareFiles(rootPath,p.path())==0)
+									remove(rootPath.c_str());
+								else
+								{
+									ofstream ofile(rootPath,ofstream::out|ofstream::app);
+									ofile<<"This File wasn't present in the previous checkpoint, \nHowever your changes int the succeesing commits are saved here\n\n";
+									cout<<"\033[1;31mMERGE CONFLICT IN: \033[0m"<<rootPath<<"\n";
+								}
+							}
+						}
+					}
+				}
+
+			}
+			mergeConflict();
+		}
+		else
+		{
+			cout<<"\033[1;31mYou've changes that need to be commited or stashed.\033[0m\n";
+		}
+	}
+	else
+	{
+		cout<<"Incorrect Hash provided\n";
+		return;
+	}
+}
 
 int main(int argc, char *argv[])
 {
@@ -536,7 +755,9 @@ else if(strcmp(argv[1],"add")==0){
 		 Path+=argv[2];}
 		add(Path);
 	}
-	
+	else if(strcmp(argv[1],"revert")==0){
+			revert(argv);
+		}
 	 else if (strcmp(argv[1], "--help")==0)
             std::cout<<"Help is always provided just look for it.May the source be with you.";
     return 0;
