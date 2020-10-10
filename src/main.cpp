@@ -13,7 +13,7 @@ using namespace std;
 namespace fs=std::experimental::filesystem;
 namespace fsnew=std::filesystem;
 string root;
-void init(string &path){
+void init(string path=root){
 	struct stat buffer;
 	if(stat((path+"/.imperium").c_str(),&buffer)==0){
 		cout<<"Repository has been already initialized\n"; return;
@@ -33,12 +33,18 @@ void init(string &path){
 	string addLog=path+"/add.log";
 	ofstream add(addLog.c_str());
 	add.close();
-	
+
 	string conflictLog=path+"/conflict.log";
 	ofstream conflict(conflictLog.c_str());
 	conflict<<"False\n";
 	conflict.close();
-
+	bool master = (root=="/workspace/10DaysOfCode");
+	string branchName = root.substr(root.find_last_of("/")+1);
+	if(master){
+		string branchLog=path+"/branch.log";
+		ofstream branch(branchLog.c_str());
+		branch.close();
+	}
 	cout<<"Initialized an empty repository\n";
 }
 void addtoCache(string addPath,char type){
@@ -298,6 +304,7 @@ void log(){
 		string line;
 		while(!commitLog.eof()){
 			getline(commitLog,line);
+			if(line.size()<20) continue;
 			cout<<line<<endl;
 		}
 	}
@@ -305,7 +312,6 @@ void log(){
 	commitLog.close();
 }
 void addCheckout(string path,char type){
-	cout<<"Checkout "<<path<<endl;
 	if(type=='d'){
 		string parentPath = root + "/.imperium/.commit/";
 		path = path.substr(parentPath.length());
@@ -490,7 +496,7 @@ void revert(string passedHash){
 				string checkPath = root + "/.imperium/.commit/"+headHash+filerel;
 				struct stat buffer1;
 				if(stat(checkPath.c_str(),&buffer1)!=0) continue;
-				if(comparefiles(path,checkPath)) {cout<<"please commit latest changes first\nFile "<<path<<" is modified and unstaged\n"; return;}
+				if(comparefiles(path,checkPath)) {cout<<"please commit latest changes first\n"; return;}
 			}
 		}
 	}
@@ -528,7 +534,7 @@ void revert(string passedHash){
 						conflict.pb(root+filerel);
 						mergeConflict.close();
 					}
-					else{
+					else if(find(conflict.begin(),conflict.end(),root+filerel)==conflict.end()) {
 						string deletePath = root + filerel;
 						if(remove(deletePath.c_str())) {cout<<"Error in deleting files\n"; return;}
 					}
@@ -614,10 +620,10 @@ void revert(string passedHash){
 								mergeConflict.close();
 							}
 						}
-						else remove(string((root+filerel)).c_str());
+						else if(find(conflict.begin(),conflict.end(),root+filerel)==conflict.end()) remove(string((root+filerel)).c_str());
 					}
 				}
-				else remove(string((root+filerel)).c_str());
+				else if(find(conflict.begin(),conflict.end(),root+filerel)==conflict.end()) remove(string((root+filerel)).c_str());
 			}
 		}
 	}
@@ -655,9 +661,169 @@ void resolve(){
 	cout<<"Resolved !!\n";
 	exit(0);
 }
+void branch(string branchName){
+	string newRoot = "/workspace/"+branchName;
+	struct stat checkBranch;
+	if(stat(newRoot.c_str(),&checkBranch)==0) {cout<<"Branch alreay exists\n"; return;}
+	mkdir(newRoot.c_str(),0777);
+	string master= "/workspace/10DaysOfCode";
+	ofstream branchLog;
+	branchLog.open(master+"/.imperium/branch.log",std::ios_base::app);
+	if(branchLog.is_open()){
+		branchLog<<newRoot<<" created\n";
+	}
+	else {cout<<"Could not open branch log in master\n"; return;}
+	branchLog.close();
+	string originalMake="/workspace/10DaysOfCode/Makefile";
+	string copyMake = "/workspace/"+branchName+"/Makefile";
+	cout<<"Created branch "<<branchName<<endl;
+	fsnew::copy_file(originalMake,copyMake);
+	root = newRoot;
+	init();
+}
+bool ifIgnored(string path){
+	string prefix = "/workspace/";
+	path=path.substr(prefix.length());
+	string branch=path.substr(0,path.find_first_of("/")); path=path.substr(0,path.find_first_of("/"));
+	branch = prefix + branch;
+	ifstream ignoreFile;
+	vector<string> filenames;
+	vector<string> ignoreDir;
+	ignoreFile.open(branch+"/.imperiumignore");
+	if(ignoreFile.is_open()){
+		while(!ignoreFile.eof()){
+			string file_or_dir; getline(ignoreFile,file_or_dir);
+			if(file_or_dir.back()=='/') ignoreDir.pb(branch+"/"+file_or_dir);
+			else filenames.pb(branch+"/"+file_or_dir);
+		}
+	}
+	else {cout<<"Could not open imperiumignore\n"; exit(0);}
+	ignoreFile.close();
+	if(find(filenames.begin(),filenames.end(),branch+path)!=filenames.end()||ignoreFolder(path,ignoreDir)){
+		return true;
+	}
+	else return false;
+}
+void merge(string fromBranch,string toBranch="",bool master=1){
+	fromBranch="/workspace/"+fromBranch;
+	struct stat checkFromBranch;
+	if(stat(fromBranch.c_str(),&checkFromBranch)!=0) {cout<<"No such branch\n"; return;}
+	string branchName = "master";
+    if(!master){
+		toBranch="/workspace/"+toBranch;
+		struct stat checkCorrect;
+		if(stat(toBranch.c_str(),&checkCorrect)!=0) {cout<<"No such branch found\n"; return;}
+		branchName = toBranch.substr(toBranch.find_last_of("/")+1);
+	}
+	string branchLogPath = "/workspace/10DaysOfCode/.imperium/branch.log";
+	ofstream branchLog;
+	branchLog.open(branchLogPath,std::ios_base::app);
+	if(!branchLog.is_open()) {cout<<"Could not open branch log\n"; return;}
+	branchLog<<fromBranch<<" merged with "<<(master?"master":toBranch)<<endl;
+	branchLog.close();
+	string temproot=fromBranch; root = "/workspace/10DaysOfCode"; if(!master) root = toBranch;
+		for(auto &p:fsnew::recursive_directory_iterator(temproot)){
+			if(ifIgnored(p.path())) continue;
+			struct stat buffer;
+			if(stat(p.path().c_str(),&buffer)==0){
+				if(buffer.st_mode & S_IFDIR){
+					string relpath=p.path();
+					relpath=relpath.substr(temproot.length());
+					if(relpath.empty()) continue;
+					relpath=root+relpath;
+					struct stat buffer2;
+					if(stat(relpath.c_str(),&buffer2)!=0) fsnew::create_directories(relpath);
+				}
+				else if(buffer.st_mode & S_IFREG){
+					string originalPath = p.path();
+					string relpath=p.path();
+					relpath=relpath.substr(temproot.length());
+					relpath=root+relpath;
+					string filename = relpath.substr(relpath.find_last_of("/")+1);
+					relpath = relpath.substr(0,relpath.find_last_of("/"));
+					struct stat buffer2;
+					if(stat(relpath.c_str(),&buffer2)!=0) fsnew::create_directories(relpath);
+					fsnew::copy_file(originalPath,relpath+"/"+filename,fsnew::copy_options::overwrite_existing);
+				}
+			}
+		}
+	cout<<"Merged successfully\n";
+	fsnew::remove_all(fromBranch.c_str());
+}
+void listBranches(){
+	ifstream branchLog;
+	branchLog.open("/workspace/10DaysOfCode/.imperium/branch.log");
+	if(!branchLog.is_open())  {cout<<"Could not open branch log\n"; return;}
+	unordered_set<string> branches;
+	while(!branchLog.eof()){
+		string line; getline(branchLog,line);
+		string status = line.substr(line.find_first_of(" ")+1);
+		if(status=="created"){
+			string branch = line.substr(0,line.find_first_of(" "));
+			branches.insert(branch);
+		}
+		else{
+			string branch = line.substr(0,line.find_first_of(" "));
+			branches.erase(branch);
+		}
+	}
+	if(branches.empty()){
+		cout<<"No branches other than master\n"; return;
+	}
+	cout<<"Current open branches(other than master):\n";
+	for(string branch : branches) cout<<branch<<endl;
+	cout<<endl;
+}
+void help(string command){
+	if(command == "init"){
+		cout<<"Initialises a repository that contains a setup of files, needed for performing all other commands on inperium\nThis is the first command you should give in when using imperium\n";
+	}
+	else if(command == "add"){
+		cout<<"This is the second step of using version control.\nThis command is given in format imperium add [path]\n";
+		cout<<"This adds the file(s) present in [path] to the staging are, where they ready to get saved.\n";
+	}
+	else if(command == "commit"){
+		cout<<"This command is one of the most important command in our version control.\n";
+		cout<<"Commit saves the files that were staged using add.\n";
+		cout<<"It is passed as imperium commit -m message. Where message is written by the user.\n";
+	}
+	else if(command == "log"){
+		cout<<"This command lists all the commits made by user, and the latest commit denoted by a \"HEAD\" tag.\n";
+	}
+	else if(command == "checkout"){
+		cout<<"This command is kind-of time travel command. It loads a previously saved commit.\n";
+		cout<<"Along with this command, the commit hash of the commit is also to be passed. Commit hash can be identified by log.\n";
+	}
+	else if(command == "revert"){
+		cout<<"This command reverts back changes made by the passed commit.";
+		cout<<"Commit hash is passed along with this commit.\n";
+	}
+	else if(command == "resolve"){
+		cout<<"This command is used to \"unfreeze\" all the commands frozen by a merge conflict.\n";
+	}
+	else if(command == "new"){
+		cout<<"Creates a new branch.\n";
+		cout<<"Command is passed as imperium new <branch name>\n";
+		cout<<"Commadn can be called from any branch.\n";
+	}
+	else if(command == "merge"){
+		cout<<"Merges two branches.\n";
+		cout<<"Command is given as imperium merge branch1 branch2\n";
+		cout<<"Merges branch1 into branch2, deleting branch1.\n";
+		cout<<"If branch2 is not specified, it's the master branch by default.\n";
+		cout<<"This command can only be called from the master branch.\n";
+	}
+	else if(command == "list"){
+		cout<<"Lists all active branches, other than master.\n";
+	}
+	else if(command == "help"){
+		cout<<"Are u kiddin me -_-\n";
+	}
+	else cout<<"Enter a valid command.\n";
+}
 int main(int argc,char* argv[]) {
 	if(argc==1) {cout<<"Imperium Commands :\n";
-	cout<<"init\nadd\ncommit\nlog\ncheckout\nstatus\nrevert\nresolve\n";
+	cout<<"init\nadd\ncommit\nlog\ncheckout\nstatus\nrevert\nresolve\nnew\nmerge\nlist\ntype help <command> to know about a specific command\n";
 	return 0;}
 	root=getenv("dir");
 	if(conflict()) {
@@ -696,6 +862,44 @@ int main(int argc,char* argv[]) {
 	else if(strcmp(argv[1],"resolve")==0){
 		resolve();
 	}
-	else cout<<"Enter a valid command\n";
+	else if(strcmp(argv[1],"new")==0){
+		if(argc<3) {cout<<"Enter a branch name!!\n"; return 0;}
+		if(argc>3) {cout<<"Branch name cannot contain spaces.\n"; return 0;}
+		string branchName=argv[2];
+		branch(branchName);
+	}
+	else if(strcmp(argv[1],"merge")==0){
+		if(root!="/workspace/10DaysOfCode") {cout<<"Please change to master branch before merging\n"; return 0;}
+		if(argc==2){
+			cout<<"Enter a branch name!!\n"; return 0;
+		}
+		if(strcmp(argv[2],"10DaysOfCode")==0){
+			cout<<"Cannot merge master branch into other branch.\n"; return 0;
+		}
+		if(argc==3){
+			string branchName = argv[2];
+			merge(branchName);
+			return 0;
+		}
+		if(argc==4) {
+			string fromBranch = argv[2];
+			string givenbranch = argv[3];
+			merge(fromBranch,givenbranch,0);
+		}
+		else cout<<"Can only merge two branches at a time\n";
+	}
+	else if(strcmp(argv[1],"list")==0){
+		listBranches();
+	}
+	else if(strcmp(argv[1],"help")==0){
+		if(argc==2) {
+			cout<<"Imperium is an indigenous Version Control System(like git)\n";
+			cout<<"Type help <command> for knowing about specific command\n";
+			return 0;
+		}
+		string helpCommand = argv[2];
+		help(helpCommand);
+	}
+	else cout<<"Enter a valid command\ntype imperium for list of availible commands\n";
 	return 0;
 }
