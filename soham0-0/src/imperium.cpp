@@ -597,7 +597,6 @@ void imperium::encrypt(){
 
 void imperium::decrypt(){
     if(doesExist(root + "/.imperium.tar.gz.dat")!="file") return ;
-    system(("openssl enc -d -aes-256-cbc -pbkdf2 -k m4Y7H3SoUrc383WI7hyoU -in " + root + "/.imperium.tar.gz.dat | tar xz").c_str());
-    system(("mv " + root.substr(1) + "/.imperium " + root + "/.imperium").c_str());
-    system(("rm -r " + root + "/.imperium.tar.gz.dat home").c_str());
+    system(("openssl enc -d -aes-256-cbc -pbkdf2 -k m4Y7H3SoUrc383WI7hyoU -in " + root + "/.imperium.tar.gz.dat | tar xz -P").c_str());
+    system(("rm -r " + root + "/.imperium.tar.gz.dat").c_str());
 }
