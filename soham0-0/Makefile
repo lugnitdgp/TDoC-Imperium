@@ -2,7 +2,7 @@ CXX := g++
 CXX_FLAGS := -std=c++17 -ggdb -lstdc++fs
 BIN := bin
 SRC := src
-INCLUDE :=
+INCLUDE := 
 LIB := lib
 LIBRARIES := 
 EXECUTABLE := main
