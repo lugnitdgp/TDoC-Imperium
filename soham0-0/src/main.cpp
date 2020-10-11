@@ -61,7 +61,7 @@ int main(int argc, char **argv){
         std::string hash = repository.headHunter(argv[2]);
         if(argc<3 || (!hash.size())){
             std::cout << "Please enter the commit hash in correct format." << std::endl;
-            repository.getHelp("checkout");
+            repository.getHelp("revert");
             return -1;
         }
         repository.revert(hash);

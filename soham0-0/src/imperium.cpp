@@ -75,10 +75,8 @@ void imperium::getHelp(std::string helpQuery){
 
 std::string imperium::headHunter(std::string hashQuery){
     isRepo();
-    if(hashQuery.size() == 40 || hashQuery.size() == 6){
-        return hashQuery;
-    }
-    else if(hashQuery.size()>5 && hashQuery.substr(0,5) == "HEAD~"){
+    
+    if(hashQuery.size()>5 && hashQuery.substr(0,5) == "HEAD~"){
         long int headNum = 1 + std::stoi(hashQuery.substr(5));
         if(headNum>0){
             std::fstream fileReader;
@@ -92,6 +90,9 @@ std::string imperium::headHunter(std::string hashQuery){
             fileReader.close();
             return hash;
         }
+    }
+    else if(hashQuery.size() == 40 || hashQuery.size() == 6){
+        return hashQuery;
     }
     return "";
 }
@@ -492,7 +493,7 @@ void imperium::revert(std::string passedHash){
                     std::fstream fileWriter;
                     fileWriter.open(root + relPath, std::fstream::app);
                     fileWriter << "## Current Files\n";
-                    fileWriter << "## This file was created in your reverted commit, passedHash , but your subsequent changes have been preserved.\n";
+                    fileWriter << "## This file was created in your reverted commit,"<< passedHash <<", but your subsequent changes have been preserved.\n";
                     fileWriter.close();
                     fileWriter.open((root + "/.imperium/conflict").c_str(), std::fstream::out | std::fstream::trunc);
                     fileWriter << "true\n";
