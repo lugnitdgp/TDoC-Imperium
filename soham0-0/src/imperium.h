@@ -22,6 +22,10 @@ class imperium {
     */
     imperium();
 
+    /*
+        Prints help for the required section, if none specified, prints all help.
+        @param helpQuery: Required help section name
+    */
     void getHelp(std::string);
 
     /*
@@ -39,28 +43,49 @@ class imperium {
     */
     void add(std::string);
 
-    //  Commits the tracked changes
+    /*
+        Commits the tracked changes
+        @param message: Entered commit messagee
+    */
     void commit(std::string);
 
-    //  Get Log of all commits
+    /*
+        Get Log of all commits
+        @param flag: optional flag (--oneline), if passed, shortens the output.
+    */
     void getCommitLog(std::string);
 
-    //  Changes current branch
+    /*  
+        Changes the current contents of the repo to that of a previous commit
+        @param hash: commit hash of the desired commit 
+    */
     void checkout(std::string);
 
-    //  Reverts back the passed commit
+    /*
+        Reverts the changes made in the specified commit
+        @param hash: commit hash of the desired commit
+    */
     void revert(std::string);
 
-    //  Shows status of the tracked items
+    //  Shows status of files in the repository
     void getStatus();
 
-    //  unfreezes the commands
+    //  Unfreezes the commands
     void resolve();
 
+    /*
+        Finds the appropriate hash using the passed argument
+        @param hashQuery: argument entered
+    */
     std::string headHunter(std::string);
 
+    //  checks if the repository is frozen due to conflict
     bool frozen();
+
+    //  Encrypts the imperium files
     void encrypt();
+
+    //  Decrypts the imperium files
     void decrypt();
 };
 
